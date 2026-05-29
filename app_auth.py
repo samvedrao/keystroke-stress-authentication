@@ -1133,6 +1133,12 @@ def server_error(e):
     return jsonify({'error': 'Server error'}), 500
 
 
+@app.route('/health')
+def health():
+    """Health check endpoint for load balancers and local checks."""
+    return jsonify({'status': 'ok', 'timestamp': datetime.now().isoformat()})
+
+
 # ============================================================================
 # DATABASE INITIALIZATION
 # ============================================================================
@@ -1172,5 +1178,9 @@ def init_db():
 
 if __name__ == '__main__':
     init_db()
+    # Allow configuring host/port via environment for flexibility
+    host = os.environ.get('KEYSTROKE_HOST', '0.0.0.0')
+    port = int(os.environ.get('KEYSTROKE_PORT', '5000'))
+    debug = os.environ.get('FLASK_DEBUG', '1') == '1'
     # Run without auto-reloader to keep logs stable during debugging
-    app.run(debug=True, use_reloader=False, host='127.0.0.1', port=5000)
+    app.run(debug=debug, use_reloader=False, host=host, port=port)
