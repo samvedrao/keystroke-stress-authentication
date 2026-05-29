@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History - Keystroke Dynamics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .brand-link {
+            color: white;
+            text-decoration: none;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .navbar-links {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        .navbar-links a,
+        .navbar-links button {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            margin-bottom: 1.5rem;
+        }
+
+        .card h2 {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .sessions-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .sessions-table thead {
+            background: #f0f4f8;
+            border-bottom: 2px solid #ecf0f1;
+        }
+
+        .sessions-table th,
+        .sessions-table td {
+            padding: 0.9rem;
+            text-align: left;
+            color: #2c3e50;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.35rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .badge.regular {
+            background: #e0ffe0;
+            color: #27ae60;
+        }
+
+        .badge.stressed {
+            background: #ffe0e0;
+            color: #c0392b;
+        }
+
+        .empty {
+            color: #7f8c8d;
+            text-align: center;
+            padding: 1rem;
+        }
+
+        @media (max-width: 800px) {
+            .navbar {
+                flex-direction: column;
+                gap: 0.8rem;
+                text-align: center;
+            }
+
+            .container {
+                padding: 0 1rem;
+            }
+
+            .card {
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/dashboard" class="brand-link">Keystroke Dynamics</a>
+        <div class="navbar-links">
+            <span>{{ user.username }}</span>
+            <a href="/dashboard">Dashboard</a>
+            <a href="/profile">Profile</a>
+            <button onclick="window.location.href='/logout'">Logout</button>
+        </div>
+    </nav>
+
+    <main class="container">
+        <section class="card">
+            <h2>Session Progress and Mood History</h2>
+            <p style="color:#7f8c8d;">Review each typing session and how your mood pattern changes over time.</p>
+        </section>
+
+        <section class="charts-grid">
+            <article class="card">
+                <h2>Mood Timeline</h2>
+                <canvas id="moodChart"></canvas>
+            </article>
+            <article class="card">
+                <h2>Cross-User Stress Comparison</h2>
+                <canvas id="stressChart"></canvas>
+            </article>
+        </section>
+
+        <section class="card">
+            <h2>Session History</h2>
+            <table class="sessions-table">
+                <thead>
+                    <tr>
+                        <th>Date and Time</th>
+                        <th>Typing Speed</th>
+                        <th>Consistency</th>
+                        <th>Mood</th>
+                    </tr>
+                </thead>
+                <tbody id="historyRows">
+                    <tr><td colspan="4" class="empty">Loading sessions...</td></tr>
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <script>
+        let moodChart = null;
+        let stressChart = null;
+
+        function renderHistoryRows(timeline) {
+            const body = document.getElementById('historyRows');
+
+            if (!timeline.length) {
+                body.innerHTML = '<tr><td colspan="4" class="empty">No sessions yet.</td></tr>';
+                return;
+            }
+
+            body.innerHTML = timeline.map(item => {
+                const badgeClass = item.mood_label === 'Stressed' ? 'stressed' : 'regular';
+                const consistencyPercent = (Number(item.consistency_score || 0) * 100).toFixed(1);
+
+                return `
+                    <tr>
+                        <td>${new Date(item.timestamp).toLocaleString()}</td>
+                        <td>${Number(item.typing_speed || 0).toFixed(2)}</td>
+                        <td>${consistencyPercent}%</td>
+                        <td><span class="badge ${badgeClass}">${item.mood_label}</span></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderMoodChart(timeline) {
+            const canvas = document.getElementById('moodChart');
+            const labels = timeline.map(item => new Date(item.timestamp).toLocaleDateString());
+            const values = timeline.map(item => item.ensemble_prediction === 1 ? 1 : 0);
+
+            if (moodChart) {
+                moodChart.destroy();
+            }
+
+            moodChart = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Mood (1 = Stressed, 0 = Regular)',
+                        data: values,
+                        borderColor: '#c0392b',
+                        backgroundColor: 'rgba(192, 57, 43, 0.15)',
+                        tension: 0.25
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 1,
+                            ticks: { stepSize: 1 }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderStressChart(peerSummary) {
+            const canvas = document.getElementById('stressChart');
+            const labels = peerSummary.map(item => item.username);
+            const stressed = peerSummary.map(item => Number(item.stressed_count || 0));
+            const regular = peerSummary.map(item => Number(item.regular_count || 0));
+
+            if (stressChart) {
+                stressChart.destroy();
+            }
+
+            stressChart = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Regular Sessions',
+                            data: regular,
+                            backgroundColor: '#27ae60'
+                        },
+                        {
+                            label: 'Stressed Sessions',
+                            data: stressed,
+                            backgroundColor: '#c0392b'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: { stacked: true },
+                        y: { stacked: true }
+                    }
+                }
+            });
+        }
+
+        async function loadOverview() {
+            try {
+                const response = await fetch('/api/analytics/overview');
+                if (!response.ok) {
+                    throw new Error('Failed to load overview');
+                }
+
+                const data = await response.json();
+                const timeline = data.current_user_timeline || [];
+                const peers = data.peer_summary || [];
+
+                renderHistoryRows(timeline);
+                renderMoodChart(timeline);
+                renderStressChart(peers);
+            } catch (error) {
+                document.getElementById('historyRows').innerHTML = '<tr><td colspan="4" class="empty">Unable to load data.</td></tr>';
+                console.error(error);
+            }
+        }
+
+        loadOverview();
+    </script>
+</body>
+</html>

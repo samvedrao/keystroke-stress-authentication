@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - Keystroke Dynamics</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .navbar h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .brand-link {
+            color: white;
+            text-decoration: none;
+        }
+
+        .navbar-links {
+            display: flex;
+            gap: 1.5rem;
+        }
+
+        .navbar-links a,
+        .navbar-links button {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .profile-head {
+            display: flex;
+            align-items: center;
+            gap: 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .avatar {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+
+        .muted {
+            color: #7f8c8d;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .stat {
+            background: #f0f4f8;
+            border-radius: 10px;
+            padding: 1rem;
+        }
+
+        .stat .label {
+            color: #7f8c8d;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .stat .value {
+            color: #2c3e50;
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-top: 0.3rem;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.85rem 1.2rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .danger {
+            border: 2px solid #e74c3c;
+            background: #fff5f5;
+        }
+
+        .danger h3 {
+            color: #c0392b;
+            margin-bottom: 0.5rem;
+        }
+
+        @media (max-width: 700px) {
+            .container {
+                padding: 0 1rem;
+            }
+
+            .navbar {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+
+            .profile-head {
+                flex-direction: column;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1><a href="/dashboard" class="brand-link">Keystroke Dynamics</a></h1>
+        <div class="navbar-links">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/history">History</a>
+            <a href="/verify-typing">Verify & Analyze</a>
+            <button onclick="window.location.href='/logout'">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <section class="card">
+            <div class="profile-head">
+                <div class="avatar">{{ user.username[0].upper() }}</div>
+                <div>
+                    <h2>{{ user.username }}</h2>
+                    <p class="muted">Member since {{ user.created_at.strftime('%B %d, %Y') }}</p>
+                    <p class="muted">{{ user.email }}</p>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat">
+                    <div class="label">Total Sessions</div>
+                    <div class="value">{{ typing_sessions|length }}</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Average Speed</div>
+                    <div class="value">{{ "%.2f"|format(avg_speed) }}</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Best Consistency</div>
+                    <div class="value">{{ "%.1f"|format(best_consistency * 100) }}%</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Regular Sessions</div>
+                    <div class="value">{{ regular_count }}</div>
+                </div>
+            </div>
+
+            <div class="actions" style="margin-top: 1.5rem;">
+                <a href="/verify-typing" class="btn btn-primary">Analyze Typing</a>
+                <a href="/dashboard" class="btn btn-secondary">Back to Dashboard</a>
+            </div>
+        </section>
+
+        <section class="card danger">
+            <h3>Danger Zone</h3>
+            <p class="muted" style="margin-bottom: 1rem;">Delete your account and all typing sessions permanently.</p>
+            <form method="POST" action="/delete-account" onsubmit="return confirm('Delete your account permanently?');">
+                <button type="submit" class="btn" style="background:#e74c3c;color:#fff;">Delete Account</button>
+            </form>
+        </section>
+    </div>
+</body>
+</html>

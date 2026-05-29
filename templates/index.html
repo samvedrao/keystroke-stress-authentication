@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keystroke Dynamics Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🔐 Keystroke Dynamics Dashboard</h1>
+                <p class="subtitle">Stress Classification & User Authentication</p>
+            </div>
+            <div class="header-links">
+                <a href="#metrics" class="nav-link">Metrics</a>
+                <a href="/typing" class="nav-link">🎮 Live Typing</a>
+                <a href="/metrics" class="nav-link">History</a>
+                <a href="/download/report" class="nav-link">Download Report</a>
+            </div>
+        </header>
+
+        <!-- Status Section -->
+        <section class="status-section">
+            <h2>Model Status</h2>
+            <div class="status-grid" id="modelStatus">
+                <div class="status-card loading">
+                    <h3>Loading...</h3>
+                </div>
+            </div>
+        </section>
+
+        <!-- Latest Results Section -->
+        {% if latest %}
+        <section class="results-section">
+            <h2>Latest Training Results</h2>
+            
+            <div class="results-grid">
+                <!-- Stress Classification -->
+                <div class="result-card stress-card">
+                    <h3>💪 Stress Classification</h3>
+                    <div class="metric">
+                        <span class="label">Random Forest:</span>
+                        <span class="value">{{ (latest.stress_classification.random_forest_accuracy * 100)|round(2) }}%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">XGBoost:</span>
+                        <span class="value">{{ (latest.stress_classification.xgboost_accuracy * 100)|round(2) }}%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Best Model:</span>
+                        <span class="value">{{ latest.stress_classification.best_model }}</span>
+                    </div>
+                    <div class="timestamp">{{ latest.timestamp[:10] }} {{ latest.timestamp[11:19] }}</div>
+                </div>
+
+                <!-- User Authentication -->
+                <div class="result-card auth-card">
+                    <h3>🔐 User Authentication</h3>
+                    <div class="metric">
+                        <span class="label">Accuracy:</span>
+                        <span class="value">{{ (latest.user_authentication.avg_accuracy * 100)|round(2) }}%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Precision:</span>
+                        <span class="value">{{ (latest.user_authentication.avg_precision * 100)|round(2) }}%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Recall:</span>
+                        <span class="value">{{ (latest.user_authentication.avg_recall * 100)|round(2) }}%</span>
+                    </div>
+                    <div class="timestamp">{{ latest.timestamp[:10] }} {{ latest.timestamp[11:19] }}</div>
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Summary Statistics -->
+        {% if summary.total_runs > 0 %}
+        <section class="summary-section">
+            <h2>Summary Statistics (Across {{ summary.total_runs }} Training Runs)</h2>
+            
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <h4>Avg RF Accuracy</h4>
+                    <p class="stat-value">{{ (summary.avg_rf_accuracy * 100)|round(2) }}%</p>
+                    <p class="stat-best">Best: {{ (summary.best_rf_accuracy * 100)|round(2) }}%</p>
+                </div>
+                <div class="stat-box">
+                    <h4>Avg XGBoost Accuracy</h4>
+                    <p class="stat-value">{{ (summary.avg_xgb_accuracy * 100)|round(2) }}%</p>
+                    <p class="stat-best">Best: {{ (summary.best_xgb_accuracy * 100)|round(2) }}%</p>
+                </div>
+                <div class="stat-box">
+                    <h4>Avg Auth Accuracy</h4>
+                    <p class="stat-value">{{ (summary.avg_auth_accuracy * 100)|round(2) }}%</p>
+                    <p class="stat-best">Best: {{ (summary.best_auth_accuracy * 100)|round(2) }}%</p>
+                </div>
+                <div class="stat-box">
+                    <h4>Total Runs</h4>
+                    <p class="stat-value">{{ summary.total_runs }}</p>
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Prediction Section -->
+        <section class="prediction-section">
+            <h2>Make Predictions</h2>
+            
+            <div class="prediction-grid">
+                <!-- Stress Prediction -->
+                <div class="prediction-card">
+                    <h3>📊 Stress Level Prediction</h3>
+                    <form id="stressForm" onsubmit="predictStress(event)">
+                        <div class="form-group">
+                            <label>Mean Hold Time (ms)</label>
+                            <input type="number" step="0.01" value="100" name="mean_hold_time" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Std Hold Time (ms)</label>
+                            <input type="number" step="0.01" value="20" name="std_hold_time" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Mean Flight Time (ms)</label>
+                            <input type="number" step="0.01" value="80" name="mean_flight_time" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Std Flight Time (ms)</label>
+                            <input type="number" step="0.01" value="15" name="std_flight_time" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Typing Speed (keys/sec)</label>
+                            <input type="number" step="0.01" value="12.5" name="typing_speed" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Error Proxy</label>
+                            <input type="number" step="0.01" value="0.2" name="error_proxy" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Consistency Score (0-1)</label>
+                            <input type="number" step="0.01" min="0" max="1" value="0.8" name="consistency_score" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Pause Frequency</label>
+                            <input type="number" value="3" name="pause_frequency" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Predict Stress</button>
+                    </form>
+                    <div id="stressResult" class="result-box"></div>
+                </div>
+
+                <!-- Auth Prediction -->
+                <div class="prediction-card">
+                    <h3>🔐 User Authentication</h3>
+                    <form id="authForm" onsubmit="predictAuth(event)">
+                        <div class="form-group">
+                            <label>User ID</label>
+                            <select id="userSelect" name="user_id" required>
+                                <option value="">Loading users...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Mean Hold Time (ms)</label>
+                            <input type="number" step="0.01" value="100" name="mean_hold_time" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Std Hold Time (ms)</label>
+                            <input type="number" step="0.01" value="20" name="std_hold_time" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Mean Flight Time (ms)</label>
+                            <input type="number" step="0.01" value="80" name="mean_flight_time" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Std Flight Time (ms)</label>
+                            <input type="number" step="0.01" value="15" name="std_flight_time" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Typing Speed (keys/sec)</label>
+                            <input type="number" step="0.01" value="12.5" name="typing_speed" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Error Proxy</label>
+                            <input type="number" step="0.01" value="0.2" name="error_proxy" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Consistency Score (0-1)</label>
+                            <input type="number" step="0.01" min="0" max="1" value="0.8" name="consistency_score" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Pause Frequency</label>
+                            <input type="number" value="3" name="pause_frequency" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Check User</button>
+                    </form>
+                    <div id="authResult" class="result-box"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Keystroke Dynamics Project | Stress Classification & User Authentication</p>
+            <p>Built with Flask, scikit-learn, and XGBoost</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

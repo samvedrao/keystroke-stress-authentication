@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Keystroke Dynamics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>📊 Your Dashboard</h1>
+                <p class="subtitle">{{ user.username }}</p>
+            </div>
+            <div class="header-links">
+                <a href="/typing" class="nav-link">⌨️ Analyze</a>
+                <a href="/profile" class="nav-link">👤 Profile</a>
+                <a href="/logout" class="nav-link logout">🚪 Logout</a>
+            </div>
+        </header>
+
+        <!-- Statistics Cards -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">📝</div>
+                <div class="stat-content">
+                    <div class="stat-label">Total Sessions</div>
+                    <div class="stat-value">{{ stats.total_sessions }}</div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">⚡</div>
+                <div class="stat-content">
+                    <div class="stat-label">Avg Typing Speed</div>
+                    <div class="stat-value">{{ "%.1f"|format(stats.avg_typing_speed) }} <span style="font-size: 0.8em;">chars/s</span></div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">🎯</div>
+                <div class="stat-content">
+                    <div class="stat-label">Avg Consistency</div>
+                    <div class="stat-value">{{ "%.0f"|format(stats.avg_consistency * 100) }}%</div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="color: #e74c3c;">✓</div>
+                <div class="stat-content">
+                    <div class="stat-label">Regular Sessions</div>
+                    <div class="stat-value">{{ stats.low_stress_count }}</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chart Section -->
+        <section class="charts-section">
+            <div class="chart-container">
+                <h2>Typing Speed Trend</h2>
+                <canvas id="speedChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Session Distribution</h2>
+                <canvas id="sessionChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Recent Sessions -->
+        <section class="sessions-section">
+            <h2>Recent Sessions</h2>
+            <div class="table-scroll">
+                <table class="sessions-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Speed</th>
+                            <th>Hold Time</th>
+                            <th>Consistency</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if sessions %}
+                            {% for session in sessions %}
+                            <tr>
+                                <td>{{ session.created_at.strftime('%m/%d %H:%M') }}</td>
+                                <td>{{ "%.1f"|format(session.typing_speed) }}</td>
+                                <td>{{ "%.0f"|format(session.mean_hold_time) }}ms</td>
+                                <td>{{ "%.0f"|format(session.consistency_score * 100) }}%</td>
+                                <td>
+                                    <span class="badge {% if session.ensemble_prediction == 0 %}success{% else %}warning{% endif %}">
+                                        {{ "Regular" if session.ensemble_prediction == 0 else "Stressed" }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="no-data">No sessions yet - <a href="/typing">Start analyzing!</a></td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Keystroke Dynamics | Your personal typing analysis</p>
+        </footer>
+    </div>
+
+    <script>
+        async function loadCharts() {
+            try {
+                const response = await fetch('/api/user/sessions');
+                const sessions = await response.json();
+
+                if (sessions.length === 0) return;
+
+                sessions.reverse();
+
+                // Speed Chart
+                const speedCtx = document.getElementById('speedChart').getContext('2d');
+                new Chart(speedCtx, {
+                    type: 'line',
+                    data: {
+                        labels: sessions.map((s, i) => `#${i + 1}`),
+                        datasets: [{
+                            label: 'Typing Speed',
+                            data: sessions.map(s => s.typing_speed),
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+
+                // Session Distribution
+                const regular = sessions.filter(s => s.ensemble_prediction === 0).length;
+                const stressed = sessions.filter(s => s.ensemble_prediction === 1).length;
+                
+                const distCtx = document.getElementById('sessionChart').getContext('2d');
+                new Chart(distCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Regular', 'Stressed'],
+                        datasets: [{
+                            data: [regular, stressed],
+                            backgroundColor: ['#2ecc71', '#e74c3c'],
+                            borderColor: ['#27ae60', '#c0392b'],
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { position: 'bottom' } }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading charts:', error);
+            }
+        }
+
+        loadCharts();
+    </script>
+</body>
+</html>

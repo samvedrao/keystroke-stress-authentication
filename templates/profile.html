@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - Keystroke Dynamics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>👤 User Profile</h1>
+                <p class="subtitle">{{ user.username }} | Joined {{ user.created_at.strftime('%B %Y') }}</p>
+            </div>
+            <div class="header-links">
+                <a href="/dashboard" class="nav-link">📊 Dashboard</a>
+                <a href="/typing" class="nav-link">⌨️ New Analysis</a>
+                <a href="/logout" class="nav-link logout">🚪 Logout</a>
+            </div>
+        </header>
+
+        <!-- User Information -->
+        <section class="user-info-section">
+            <div class="info-card">
+                <div class="info-item">
+                    <div class="info-label">Username</div>
+                    <div class="info-value">{{ user.username }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Email</div>
+                    <div class="info-value">{{ user.email }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Member Since</div>
+                    <div class="info-value">{{ user.created_at.strftime('%Y-%m-%d') }}</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Statistics Overview -->
+        <section class="statistics-section">
+            <h2>📊 Statistics Overview</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📝</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Total Sessions</div>
+                        <div class="stat-value">{{ stats.total_sessions }}</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Avg Typing Speed</div>
+                        <div class="stat-value">{{ "%.2f"|format(stats.avg_typing_speed) }} <span style="font-size: 0.8em;">keys/s</span></div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Avg Consistency</div>
+                        <div class="stat-value">{{ "%.1f"|format(stats.avg_consistency * 100) }}%</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">⏱️</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Avg Hold Time</div>
+                        <div class="stat-value">{{ "%.0f"|format(stats.avg_hold_time) }} ms</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts -->
+        <section class="charts-section">
+            <div class="chart-container">
+                <h2>Typing Speed Trend</h2>
+                <canvas id="speedTrendChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Consistency Over Time</h2>
+                <canvas id="consistencyChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Stress Distribution</h2>
+                <canvas id="stressDistChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Hold Time Distribution</h2>
+                <canvas id="holdTimeChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Stress Trend Table -->
+        <section class="stress-trend-section">
+            <h2>Recent Stress Trend</h2>
+            <div class="table-scroll">
+                <table class="stress-trend-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Typing Speed</th>
+                            <th>Hold Time</th>
+                            <th>Consistency</th>
+                            <th>RF Prediction</th>
+                            <th>XGB Prediction</th>
+                            <th>Ensemble</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if stats.stress_trend %}
+                            {% for session in stats.stress_trend|reverse %}
+                            <tr class="{% if session.ensemble_prediction == 1 %}high-stress{% endif %}">
+                                <td>{{ session.timestamp[:16] }}</td>
+                                <td>{{ "%.2f"|format(session.typing_speed) }} keys/s</td>
+                                <td>{{ "%.0f"|format(session.mean_hold_time) }} ms</td>
+                                <td>{{ "%.1f"|format(session.consistency_score * 100) }}%</td>
+                                <td>
+                                    <span class="badge {% if session.rf_prediction == 0 %}success{% else %}danger{% endif %}">
+                                        {{ "L" if session.rf_prediction == 0 else "H" }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge {% if session.xgb_prediction == 0 %}success{% else %}danger{% endif %}">
+                                        {{ "L" if session.xgb_prediction == 0 else "H" }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge {% if session.ensemble_prediction == 0 %}success{% else %}danger{% endif %}">
+                                        {{ "L" if session.ensemble_prediction == 0 else "H" }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="no-data">No analysis sessions yet</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Keystroke Dynamics | User Profile | Complete Analysis History</p>
+        </footer>
+    </div>
+
+    <script>
+        const sessions = {{ stats.stress_trend|tojson }};
+
+        if (sessions.length > 0) {
+            // Reverse for chronological order
+            sessions.reverse();
+
+            // Speed Trend
+            const speedCtx = document.getElementById('speedTrendChart').getContext('2d');
+            new Chart(speedCtx, {
+                type: 'line',
+                data: {
+                    labels: sessions.map((s, i) => i + 1),
+                    datasets: [{
+                        label: 'Typing Speed (keys/s)',
+                        data: sessions.map(s => s.typing_speed),
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        tension: 0.1,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { title: { display: true, text: 'Session' } },
+                        y: { title: { display: true, text: 'Keys/s' } }
+                    }
+                }
+            });
+
+            // Consistency Chart
+            const consCtx = document.getElementById('consistencyChart').getContext('2d');
+            new Chart(consCtx, {
+                type: 'line',
+                data: {
+                    labels: sessions.map((s, i) => i + 1),
+                    datasets: [{
+                        label: 'Consistency Score (%)',
+                        data: sessions.map(s => s.consistency_score * 100),
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                        tension: 0.1,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { title: { display: true, text: 'Session' } },
+                        y: { max: 100, title: { display: true, text: 'Consistency %' } }
+                    }
+                }
+            });
+
+            // Stress Distribution
+            const stressCount = sessions.filter(s => s.ensemble_prediction === 1).length;
+            const stressCtx = document.getElementById('stressDistChart').getContext('2d');
+            new Chart(stressCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Low Stress', 'High Stress'],
+                    datasets: [{
+                        data: [sessions.length - stressCount, stressCount],
+                        backgroundColor: ['#2ecc71', '#e74c3c'],
+                        borderColor: ['#27ae60', '#c0392b'],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            // Hold Time Distribution
+            const holdCtx = document.getElementById('holdTimeChart').getContext('2d');
+            new Chart(holdCtx, {
+                type: 'bar',
+                data: {
+                    labels: sessions.map((s, i) => i + 1),
+                    datasets: [{
+                        label: 'Mean Hold Time (ms)',
+                        data: sessions.map(s => s.mean_hold_time),
+                        backgroundColor: '#f39c12',
+                        borderColor: '#e67e22',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { title: { display: true, text: 'Session' } },
+                        y: { title: { display: true, text: 'Hold Time (ms)' } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training Metrics History</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>📈 Training Metrics History</h1>
+                <p class="subtitle">Track model performance over time</p>
+            </div>
+            <div class="header-links">
+                <a href="/" class="nav-link">Dashboard</a>
+                <a href="/typing" class="nav-link">🎮 Live Typing</a>
+                <a href="/download/metrics" class="nav-link">Download JSON</a>
+            </div>
+        </header>
+
+        <!-- Charts Section -->
+        <section class="charts-section">
+            <div class="chart-container">
+                <canvas id="stressAccuracyChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="authAccuracyChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Metrics Table -->
+        <section class="table-section">
+            <h2>Detailed Metrics</h2>
+            <div class="table-scroll">
+                <table class="metrics-table">
+                    <thead>
+                        <tr>
+                            <th>Run #</th>
+                            <th>Timestamp</th>
+                            <th>RF Accuracy</th>
+                            <th>XGBoost Accuracy</th>
+                            <th>Best Model</th>
+                            <th>Auth Accuracy</th>
+                            <th>Auth Precision</th>
+                            <th>Auth Recall</th>
+                        </tr>
+                    </thead>
+                    <tbody id="metricsTableBody">
+                        {% if all_metrics %}
+                            {% for metric in all_metrics|reverse %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>{{ metric.timestamp[:19] }}</td>
+                                <td><span class="accuracy">{{ (metric.stress_classification.random_forest_accuracy * 100)|round(2) }}%</span></td>
+                                <td><span class="accuracy">{{ (metric.stress_classification.xgboost_accuracy * 100)|round(2) }}%</span></td>
+                                <td><span class="badge">{{ metric.stress_classification.best_model }}</span></td>
+                                <td><span class="accuracy">{{ (metric.user_authentication.avg_accuracy * 100)|round(2) }}%</span></td>
+                                <td><span class="accuracy">{{ (metric.user_authentication.avg_precision * 100)|round(2) }}%</span></td>
+                                <td><span class="accuracy">{{ (metric.user_authentication.avg_recall * 100)|round(2) }}%</span></td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="no-data">No training metrics yet</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Keystroke Dynamics Project | Training History</p>
+        </footer>
+    </div>
+
+    <script>
+        // Parse metrics data from page
+        const allMetrics = {% if all_metrics %}{{ all_metrics|tojson }}{% else %}[]{% endif %};
+
+        // Stress Classification Chart
+        const stressCtx = document.getElementById('stressAccuracyChart').getContext('2d');
+        new Chart(stressCtx, {
+            type: 'line',
+            data: {
+                labels: allMetrics.map((m, i) => `Run ${i + 1}`),
+                datasets: [
+                    {
+                        label: 'Random Forest',
+                        data: allMetrics.map(m => m.stress_classification.random_forest_accuracy * 100),
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'XGBoost',
+                        data: allMetrics.map(m => m.stress_classification.xgboost_accuracy * 100),
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Stress Classification Accuracy Over Time'
+                    },
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        min: 0,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Accuracy (%)'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Authentication Accuracy Chart
+        const authCtx = document.getElementById('authAccuracyChart').getContext('2d');
+        new Chart(authCtx, {
+            type: 'line',
+            data: {
+                labels: allMetrics.map((m, i) => `Run ${i + 1}`),
+                datasets: [
+                    {
+                        label: 'Average Accuracy',
+                        data: allMetrics.map(m => m.user_authentication.avg_accuracy * 100),
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Average Precision',
+                        data: allMetrics.map(m => m.user_authentication.avg_precision * 100),
+                        borderColor: '#f39c12',
+                        backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Average Recall',
+                        data: allMetrics.map(m => m.user_authentication.avg_recall * 100),
+                        borderColor: '#9b59b6',
+                        backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'User Authentication Metrics Over Time'
+                    },
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        min: 0,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Score (%)'
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

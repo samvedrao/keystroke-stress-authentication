@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - Keystroke Dynamics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>👤 Profile</h1>
+                <p class="subtitle">Manage your account</p>
+            </div>
+            <div class="header-links">
+                <a href="/typing" class="nav-link">⌨️ Analyze</a>
+                <a href="/dashboard" class="nav-link">📊 Dashboard</a>
+                <a href="/logout" class="nav-link logout">🚪 Logout</a>
+            </div>
+        </header>
+
+        <!-- Profile Section -->
+        <section class="profile-section">
+            <div class="profile-card">
+                <div class="profile-header">
+                    <div class="profile-avatar">{{ user.username[0].upper() }}</div>
+                    <div class="profile-info">
+                        <h2>{{ user.username }}</h2>
+                        <p class="text-muted">Member since {{ user.created_at.strftime('%B %d, %Y') }}</p>
+                    </div>
+                </div>
+
+                <div class="profile-body">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Username</span>
+                            <span class="info-value">{{ user.username }}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Email</span>
+                            <span class="info-value">{{ user.email if user.email else "Not provided" }}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Total Sessions</span>
+                            <span class="info-value">{{ typing_sessions|length }}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Account Status</span>
+                            <span class="info-value"><span class="badge success">Active</span></span>
+                        </div>
+                    </div>
+
+                    <div class="section-divider"></div>
+
+                    <div class="stats-summary">
+                        <h3>Your Statistics</h3>
+                        <div class="stats-mini">
+                            <div class="stat-mini-item">
+                                <span class="stat-label">Average Speed</span>
+                                <span class="stat-value">{{ "%.1f"|format(avg_speed) }} chars/s</span>
+                            </div>
+                            <div class="stat-mini-item">
+                                <span class="stat-label">Best Consistency</span>
+                                <span class="stat-value">{{ "%.0f"|format(best_consistency * 100) }}%</span>
+                            </div>
+                            <div class="stat-mini-item">
+                                <span class="stat-label">Regular Sessions</span>
+                                <span class="stat-value">{{ regular_count }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section-divider"></div>
+
+                    <div class="quick-actions">
+                        <h3>Quick Actions</h3>
+                        <div class="action-buttons">
+                            <a href="/typing" class="btn btn-primary">⌨️ Start Typing Analysis</a>
+                            <a href="/dashboard" class="btn btn-secondary">📊 View Dashboard</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="danger-zone">
+                <h3>⚠️ Danger Zone</h3>
+                <div class="danger-content">
+                    <div class="danger-info">
+                        <p><strong>Delete Account</strong></p>
+                        <p class="text-small">Permanently delete your account and all associated data. This action cannot be undone.</p>
+                    </div>
+                    <form method="POST" action="/delete-account" onsubmit="return confirm('Are you sure you want to delete your account? This cannot be undone.');" style="display: inline;">
+                        <button type="submit" class="btn btn-danger">🗑️ Delete Account</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Keystroke Dynamics | Your personal typing analysis</p>
+        </footer>
+    </div>
+
+    <style>
+        .profile-section {
+            max-width: 600px;
+            margin: 2rem auto;
+        }
+
+        .profile-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .profile-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .profile-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .profile-info h2 {
+            margin: 0 0 0.5rem 0;
+            font-size: 1.5rem;
+        }
+
+        .profile-info .text-muted {
+            margin: 0;
+            opacity: 0.8;
+        }
+
+        .profile-body {
+            padding: 2rem;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .info-label {
+            font-size: 0.85rem;
+            color: #7f8c8d;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            font-size: 1.1rem;
+            color: #2c3e50;
+            font-weight: 500;
+        }
+
+        .section-divider {
+            height: 1px;
+            background: #ecf0f1;
+            margin: 1.5rem 0;
+        }
+
+        .stats-summary h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 1.1rem;
+        }
+
+        .stats-mini {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .stat-mini-item {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .stat-mini-item .stat-label {
+            font-size: 0.8rem;
+            color: #7f8c8d;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-mini-item .stat-value {
+            font-size: 1.3rem;
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .quick-actions h3 {
+            color: #2c3e50;
+            font-size: 1.1rem;
+        }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .action-buttons .btn {
+            padding: 1rem;
+            text-align: center;
+            font-size: 0.95rem;
+        }
+
+        .danger-zone {
+            background: #fff5f5;
+            border: 2px solid #e74c3c;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .danger-zone h3 {
+            color: #c0392b;
+            margin-top: 0;
+        }
+
+        .danger-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .danger-info p {
+            margin: 0.5rem 0;
+        }
+
+        .danger-info p:first-child {
+            font-weight: 600;
+            color: #c0392b;
+        }
+
+        .danger-info .text-small {
+            font-size: 0.9rem;
+            color: #7f8c8d;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        @media (max-width: 600px) {
+            .profile-header {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .profile-avatar {
+                width: 60px;
+                height: 60px;
+                font-size: 1.5rem;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-mini {
+                grid-template-columns: 1fr;
+            }
+
+            .action-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .danger-content {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</body>
+</html>

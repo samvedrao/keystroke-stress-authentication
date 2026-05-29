@@ -1,0 +1,440 @@
+/* ============================================
+   Typing Interface Styles
+   ============================================ */
+
+.typing-section {
+    max-width: 1200px;
+}
+
+.typing-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* ============================================
+   Instructions Section
+   ============================================ */
+
+.instructions-section {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    border-radius: var(--border-radius);
+}
+
+.instructions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.instruction-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    text-align: center;
+    box-shadow: var(--box-shadow);
+    transition: var(--transition);
+}
+
+.instruction-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+}
+
+.step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+}
+
+.instruction-card h3 {
+    color: var(--dark-color);
+    margin-bottom: 0.5rem;
+}
+
+.instruction-card p {
+    color: var(--gray-color);
+    font-size: 0.95rem;
+}
+
+/* ============================================
+   Sample Text Box
+   ============================================ */
+
+.sample-text-box {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    border-left: 4px solid var(--primary-color);
+}
+
+.sample-text-box h3 {
+    margin-bottom: 1rem;
+    color: var(--dark-color);
+}
+
+.sample-text {
+    background: white;
+    padding: 1rem;
+    border-radius: 5px;
+    font-size: 1.1rem;
+    line-height: 1.8;
+    color: var(--dark-color);
+    font-family: 'Arial', sans-serif;
+    font-weight: 500;
+}
+
+/* ============================================
+   Input Area
+   ============================================ */
+
+.input-area {
+    background: white;
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+}
+
+.input-area h3 {
+    margin-bottom: 1rem;
+    color: var(--dark-color);
+}
+
+.typing-input {
+    width: 100%;
+    height: 180px;
+    padding: 1rem;
+    border: 2px solid var(--light-color);
+    border-radius: 5px;
+    font-size: 1rem;
+    font-family: 'Courier New', monospace;
+    resize: vertical;
+    transition: var(--transition);
+    background: #fafafa;
+}
+
+.typing-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    background: white;
+}
+
+.input-controls {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.btn-secondary {
+    background: var(--gray-color);
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+}
+
+/* ============================================
+   Statistics Box
+   ============================================ */
+
+.stats-box {
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.1) 0%, rgba(52, 152, 219, 0.1) 100%);
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    border-left: 4px solid var(--secondary-color);
+}
+
+.stats-box h3 {
+    margin-bottom: 1rem;
+    color: var(--dark-color);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+}
+
+.stat-item {
+    background: white;
+    padding: 1rem;
+    border-radius: 5px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--gray-color);
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+/* ============================================
+   Results Section
+   ============================================ */
+
+.results-section {
+    background: white;
+    padding: 2rem;
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+}
+
+.results-section h3 {
+    margin-bottom: 1.5rem;
+    color: var(--dark-color);
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: 0.5rem;
+}
+
+/* ============================================
+   Prediction Card - Large
+   ============================================ */
+
+.prediction-card.stress-large {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: var(--border-radius);
+    margin-bottom: 2rem;
+}
+
+.prediction-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.prediction-header h4 {
+    color: white;
+    font-size: 1.3rem;
+}
+
+.stress-badge {
+    display: inline-block;
+    padding: 0.75rem 1.5rem;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 25px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: white;
+}
+
+.stress-badge.high {
+    background: rgba(231, 76, 60, 0.8);
+}
+
+.stress-badge.low {
+    background: rgba(46, 204, 113, 0.8);
+}
+
+/* ============================================
+   Models Grid
+   ============================================ */
+
+.models-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.model-result {
+    background: rgba(255, 255, 255, 0.15);
+    padding: 1.5rem;
+    border-radius: 8px;
+    backdrop-filter: blur(10px);
+}
+
+.model-result h5 {
+    color: white;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.model-result-content {
+    background: rgba(255, 255, 255, 0.95);
+    padding: 1rem;
+    border-radius: 5px;
+    color: var(--dark-color);
+}
+
+.model-result-content p {
+    margin: 0.5rem 0;
+    line-height: 1.6;
+}
+
+.confidence-bar {
+    width: 100%;
+    height: 8px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.confidence-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2ecc71, #f39c12, #e74c3c);
+    border-radius: 4px;
+}
+
+/* ============================================
+   Metrics Detail
+   ============================================ */
+
+.metrics-detail {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    margin-bottom: 1.5rem;
+}
+
+.metrics-detail h4 {
+    color: var(--dark-color);
+    margin-bottom: 1rem;
+}
+
+.metrics-table {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.metric-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    padding: 0.75rem;
+    background: white;
+    border-radius: 5px;
+    align-items: center;
+}
+
+.metric-label {
+    font-weight: 600;
+    color: var(--dark-color);
+}
+
+.metric-value {
+    color: var(--primary-color);
+    font-weight: bold;
+    text-align: right;
+    font-family: 'Courier New', monospace;
+}
+
+/* ============================================
+   Interpretation Box
+   ============================================ */
+
+.interpretation-box {
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.1) 0%, rgba(46, 204, 113, 0.1) 100%);
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    border-left: 4px solid var(--primary-color);
+    margin-top: 1.5rem;
+}
+
+.interpretation-box h4 {
+    color: var(--dark-color);
+    margin-bottom: 1rem;
+}
+
+.interpretation-box p {
+    color: var(--dark-color);
+    line-height: 1.8;
+    margin-bottom: 0.75rem;
+}
+
+.interpretation-box ul {
+    margin-left: 1.5rem;
+    color: var(--dark-color);
+}
+
+.interpretation-box li {
+    margin-bottom: 0.5rem;
+}
+
+/* ============================================
+   Error Box
+   ============================================ */
+
+.error-box {
+    background: rgba(231, 76, 60, 0.1);
+    border-left: 4px solid var(--danger-color);
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    color: var(--danger-color);
+}
+
+.error-box h4 {
+    color: var(--danger-color);
+    margin-bottom: 0.5rem;
+}
+
+/* ============================================
+   Responsive Design
+   ============================================ */
+
+@media (max-width: 768px) {
+    .instructions-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .models-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .metric-row {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+
+    .metric-value {
+        text-align: left;
+    }
+
+    .input-controls {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+    }
+
+    .typing-input {
+        height: 150px;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .prediction-header {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .stress-badge {
+        width: 100%;
+        text-align: center;
+    }
+}

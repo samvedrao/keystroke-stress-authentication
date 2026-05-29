@@ -1,0 +1,74 @@
+# ⚡ QUICK START (2 Minutes)
+
+## 🚀 Start the App
+
+```bash
+python app_auth.py
+```
+
+Then open: **http://localhost:5000**
+
+---
+
+## 📝 Register (First Time)
+
+1. Click **"Register"** tab
+2. Enter:
+   - **Username**: anything you want
+   - **Password**: any password
+   - **Email**: (skip it, optional)
+3. Click **"Register"**
+
+✅ **You're logged in!**
+
+---
+
+## ⌨️ Type Naturally
+
+1. Click **"⌨️ Analyze"** button (top right)
+2. **Just type** - stats update live:
+   - Speed
+   - Hold time
+   - Consistency
+
+**That's it!** You're done. Typing is analyzed.
+
+---
+
+## 🎯 Optional: Get Predictions
+
+1. After typing 3+ characters
+2. Click **"📊 Optional: Analyze"** if you want stress analysis
+3. See if typing is regular or stressed
+
+---
+
+## 📊 View Your History
+
+Click **"📊 Dashboard"** to see:
+- Your typing speed trend
+- Session distribution chart
+- Recent typing sessions
+
+---
+
+## 👤 Your Profile
+
+Click **"👤 Profile"** to see:
+- Your account info
+- Your statistics
+- Account settings
+
+---
+
+## 🚪 Logout
+
+Click **"🚪 Logout"** when done.
+
+Next time, click **"Login"** tab instead of "Register".
+
+---
+
+**That's all you need to know!** 🎉
+
+Everything else is optional. Enjoy! ⌨️

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Typing Analysis</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='typing.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>⌨️ Live Typing Analysis</h1>
+                <p class="subtitle">Type naturally to analyze stress levels</p>
+            </div>
+            <div class="header-links">
+                <a href="/dashboard" class="nav-link">📊 Dashboard</a>
+                <a href="/profile" class="nav-link">👤 Profile</a>
+                <a href="/logout" class="nav-link logout">🚪 Logout</a>
+            </div>
+        </header>
+
+        <!-- Instructions -->
+        <section class="instructions-section">
+            <div class="instruction-grid">
+                <div class="instruction-card">
+                    <div class="step-number">1</div>
+                    <h3>Clear Input</h3>
+                    <p>Start with an empty text box</p>
+                </div>
+                <div class="instruction-card">
+                    <div class="step-number">2</div>
+                    <h3>Type Naturally</h3>
+                    <p>Type 20+ characters freely</p>
+                </div>
+                <div class="instruction-card">
+                    <div class="step-number">3</div>
+                    <h3>Get Results</h3>
+                    <p>Analysis appears automatically</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Input Area -->
+        <section class="input-section">
+            <div class="input-container">
+                <h2>Start Typing Here</h2>
+                <textarea id="typingInput" placeholder="Click here and type naturally... Your keystroke patterns will be analyzed in real-time." rows="8"></textarea>
+                <div class="button-group">
+                    <button id="analyzeBtn" class="btn btn-primary">🔍 Analyze Pattern</button>
+                    <button id="clearBtn" class="btn btn-secondary">🗑️ Clear</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Live Statistics -->
+        <section class="stats-section" id="statsSection" style="display: none;">
+            <h2>📊 Real-Time Keystroke Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-label">Keys Typed</div>
+                    <div class="stat-value" id="keyCount">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Duration</div>
+                    <div class="stat-value" id="duration">0ms</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Typing Speed</div>
+                    <div class="stat-value" id="typingSpeed">0.00 keys/s</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Mean Hold Time</div>
+                    <div class="stat-value" id="meanHold">0ms</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Mean Flight Time</div>
+                    <div class="stat-value" id="meanFlight">0ms</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Consistency</div>
+                    <div class="stat-value" id="consistency">0%</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section class="results-section" id="resultsSection" style="display: none;">
+            <h2>🎯 Stress Analysis Results</h2>
+
+            <!-- Stress Level Badge -->
+            <div id="stressBadge" class="stress-badge" style="display: none;"></div>
+
+            <!-- Model Predictions -->
+            <div class="models-grid">
+                <div class="model-card">
+                    <h3>🌳 Random Forest</h3>
+                    <div id="rfResults"></div>
+                </div>
+                <div class="model-card">
+                    <h3>🚀 XGBoost</h3>
+                    <div id="xgbResults"></div>
+                </div>
+                <div class="model-card">
+                    <h3>🤝 Ensemble Prediction</h3>
+                    <div id="ensembleResults"></div>
+                </div>
+            </div>
+
+            <!-- Interpretation -->
+            <div class="interpretation-section" id="interpretationSection" style="display: none;">
+                <h3>💡 AI Interpretation</h3>
+                <div class="interpretation-box">
+                    <div id="stressLevel"></div>
+                    <div id="observations"></div>
+                    <div id="recommendations"></div>
+                </div>
+            </div>
+
+            <!-- Detailed Metrics -->
+            <div class="metrics-table-section">
+                <h3>📈 Detailed Keystroke Metrics</h3>
+                <table class="metrics-table">
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                        <th>Interpretation</th>
+                    </tr>
+                    <tr>
+                        <td>Mean Hold Time</td>
+                        <td id="tableHold"></td>
+                        <td id="tableHoldInt"></td>
+                    </tr>
+                    <tr>
+                        <td>Std Dev Hold Time</td>
+                        <td id="tableStdHold"></td>
+                        <td id="tableStdHoldInt"></td>
+                    </tr>
+                    <tr>
+                        <td>Mean Flight Time</td>
+                        <td id="tableFlightMean"></td>
+                        <td id="tableFlightMeanInt"></td>
+                    </tr>
+                    <tr>
+                        <td>Std Dev Flight Time</td>
+                        <td id="tableStdFlight"></td>
+                        <td id="tableStdFlightInt"></td>
+                    </tr>
+                    <tr>
+                        <td>Typing Speed</td>
+                        <td id="tableSpeed"></td>
+                        <td id="tableSpeedInt"></td>
+                    </tr>
+                    <tr>
+                        <td>Error Proxy</td>
+                        <td id="tableError"></td>
+                        <td id="tableErrorInt"></td>
+                    </tr>
+                    <tr>
+                        <td>Consistency Score</td>
+                        <td id="tableConsist"></td>
+                        <td id="tableConsistInt"></td>
+                    </tr>
+                    <tr>
+                        <td>Pause Frequency</td>
+                        <td id="tablePause"></td>
+                        <td id="tablePauseInt"></td>
+                    </tr>
+                </table>
+            </div>
+        </section>
+
+        <!-- Loading Indicator -->
+        <div id="loadingSpinner" class="loading-spinner" style="display: none;">
+            <div class="spinner"></div>
+            <p>Analyzing keystroke pattern...</p>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Keystroke Dynamics | Live Stress Analysis | All data saved to your profile</p>
+        </footer>
+    </div>
+
+    <script>
+        // Keystroke tracking
+        const keystrokeData = {
+            startTime: null,
+            keyDownTimes: {},
+            lastKeyUpTime: null,
+            holdTimes: [],
+            flightTimes: []
+        };
+
+        const typingInput = document.getElementById('typingInput');
+
+        // Event listeners
+        typingInput.addEventListener('keydown', handleKeyDown);
+        typingInput.addEventListener('keyup', handleKeyUp);
+        document.getElementById('analyzeBtn').addEventListener('click', analyzePattern);
+        document.getElementById('clearBtn').addEventListener('click', clearInput);
+
+        function handleKeyDown(e) {
+            if (!keystrokeData.startTime) {
+                keystrokeData.startTime = Date.now();
+            }
+
+            keystrokeData.keyDownTimes[e.key] = Date.now();
+
+            if (keystrokeData.lastKeyUpTime !== null) {
+                const flightTime = keystrokeData.keyDownTimes[e.key] - keystrokeData.lastKeyUpTime;
+                if (flightTime > 0 && flightTime < 5000) { // Ignore unrealistic gaps
+                    keystrokeData.flightTimes.push(flightTime);
+                }
+            }
+
+            updateLiveStats();
+        }
+
+        function handleKeyUp(e) {
+            const keyDownTime = keystrokeData.keyDownTimes[e.key];
+            if (keyDownTime) {
+                const holdTime = Date.now() - keyDownTime;
+                if (holdTime > 0 && holdTime < 5000) {
+                    keystrokeData.holdTimes.push(holdTime);
+                }
+            }
+            keystrokeData.lastKeyUpTime = Date.now();
+            updateLiveStats();
+        }
+
+        function getMean(arr) {
+            return arr.length > 0 ? arr.reduce((a, b) => a + b) / arr.length : 0;
+        }
+
+        function getStdDev(arr) {
+            if (arr.length === 0) return 0;
+            const mean = getMean(arr);
+            const sq = arr.map(x => Math.pow(x - mean, 2));
+            return Math.sqrt(sq.reduce((a, b) => a + b) / arr.length);
+        }
+
+        function updateLiveStats() {
+            if (keystrokeData.holdTimes.length >= 5) {
+                document.getElementById('statsSection').style.display = 'block';
+
+                const duration = Date.now() - keystrokeData.startTime;
+                const keyCount = typingInput.value.length;
+                const typingSpeed = keyCount / (duration / 1000);
+                const meanHold = getMean(keystrokeData.holdTimes);
+                const stdHold = getStdDev(keystrokeData.holdTimes);
+                const meanFlight = getMean(keystrokeData.flightTimes);
+                const errorProxy = meanHold > 0 ? stdHold / meanHold : 0;
+                const consistency = Math.max(0, Math.min(1, 1 - errorProxy)) * 100;
+
+                document.getElementById('keyCount').textContent = keyCount;
+                document.getElementById('duration').textContent = duration + 'ms';
+                document.getElementById('typingSpeed').textContent = typingSpeed.toFixed(2) + ' keys/s';
+                document.getElementById('meanHold').textContent = meanHold.toFixed(0) + 'ms';
+                document.getElementById('meanFlight').textContent = meanFlight.toFixed(0) + 'ms';
+                document.getElementById('consistency').textContent = consistency.toFixed(1) + '%';
+            }
+        }
+
+        function extractFeatures() {
+            const duration = Date.now() - keystrokeData.startTime;
+            const keyCount = typingInput.value.length;
+
+            const meanHold = getMean(keystrokeData.holdTimes);
+            const stdHold = getStdDev(keystrokeData.holdTimes);
+            const meanFlight = getMean(keystrokeData.flightTimes);
+            const stdFlight = getStdDev(keystrokeData.flightTimes);
+            const typingSpeed = keyCount / (duration / 1000);
+            const errorProxy = meanHold > 0 ? stdHold / meanHold : 0;
+            const consistency = Math.max(0, Math.min(1, 1 - errorProxy));
+            const pauseFreq = keystrokeData.holdTimes.filter(t => t > meanHold * 1.5).length;
+
+            return {
+                mean_hold_time: meanHold,
+                std_hold_time: stdHold,
+                mean_flight_time: meanFlight,
+                std_flight_time: stdFlight,
+                typing_speed: typingSpeed,
+                error_proxy: errorProxy,
+                consistency_score: consistency,
+                pause_frequency: pauseFreq,
+                num_keystrokes: keyCount,
+                duration_ms: duration,
+                text_typed: typingInput.value
+            };
+        }
+
+        async function analyzePattern() {
+            if (keystrokeData.holdTimes.length < 5) {
+                alert('Please type at least 5 characters for analysis');
+                return;
+            }
+
+            const features = extractFeatures();
+
+            document.getElementById('loadingSpinner').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+
+            try {
+                const response = await fetch('/api/predict/stress', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(features)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayResults(data, features);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('Analysis failed: ' + error.message);
+            } finally {
+                document.getElementById('loadingSpinner').style.display = 'none';
+            }
+        }
+
+        function displayResults(predictions, features) {
+            document.getElementById('resultsSection').style.display = 'block';
+
+            const stress = predictions.ensemble.prediction;
+            const stressLabel = predictions.ensemble.label;
+
+            // Stress Badge
+            const badge = document.getElementById('stressBadge');
+            badge.style.display = 'block';
+            badge.className = 'stress-badge ' + (stress === 1 ? 'high-stress' : 'low-stress');
+            badge.innerHTML = `<div>${stressLabel}</div><div>${(predictions.ensemble.confidence * 100).toFixed(1)}%</div>`;
+
+            // Model Results
+            document.getElementById('rfResults').innerHTML = `
+                <div class="prediction ${predictions.random_forest.prediction === 0 ? 'success' : 'danger'}">
+                    ${predictions.random_forest.label}
+                </div>
+                <div class="confidence">Confidence: ${(predictions.random_forest.confidence * 100).toFixed(1)}%</div>
+            `;
+
+            document.getElementById('xgbResults').innerHTML = `
+                <div class="prediction ${predictions.xgboost.prediction === 0 ? 'success' : 'danger'}">
+                    ${predictions.xgboost.label}
+                </div>
+                <div class="confidence">Confidence: ${(predictions.xgboost.confidence * 100).toFixed(1)}%</div>
+            `;
+
+            document.getElementById('ensembleResults').innerHTML = `
+                <div class="prediction ${predictions.ensemble.prediction === 0 ? 'success' : 'danger'}">
+                    ${predictions.ensemble.label}
+                </div>
+                <div class="confidence">Confidence: ${(predictions.ensemble.confidence * 100).toFixed(1)}%</div>
+            `;
+
+            // Interpretation
+            if (predictions.interpretation) {
+                document.getElementById('interpretationSection').style.display = 'block';
+                document.getElementById('stressLevel').innerHTML = `<strong>Stress Level:</strong> ${predictions.interpretation.stress_level}`;
+                document.getElementById('observations').innerHTML = `<strong>Observations:</strong><ul>${predictions.interpretation.observations.map(o => `<li>${o}</li>`).join('')}</ul>`;
+                document.getElementById('recommendations').innerHTML = `<strong>Recommendations:</strong><ul>${predictions.interpretation.recommendations.map(r => `<li>${r}</li>`).join('')}</ul>`;
+            }
+
+            // Detailed Metrics Table
+            const getInterpretation = (metric, value) => {
+                if (metric === 'consistency') return value > 0.8 ? 'Excellent' : value > 0.6 ? 'Good' : 'Moderate';
+                if (metric === 'speed') return value > 8 ? 'Fast' : value > 4 ? 'Moderate' : 'Slow';
+                return 'Normal';
+            };
+
+            document.getElementById('tableHold').textContent = features.mean_hold_time.toFixed(0) + 'ms';
+            document.getElementById('tableHoldInt').textContent = getInterpretation('hold', features.mean_hold_time);
+            document.getElementById('tableStdHold').textContent = features.std_hold_time.toFixed(0) + 'ms';
+            document.getElementById('tableStdHoldInt').textContent = features.std_hold_time < features.mean_hold_time ? 'Consistent' : 'Variable';
+            document.getElementById('tableFlightMean').textContent = features.mean_flight_time.toFixed(0) + 'ms';
+            document.getElementById('tableFlightMeanInt').textContent = features.mean_flight_time < 100 ? 'Quick transitions' : 'Slower transitions';
+            document.getElementById('tableStdFlight').textContent = features.std_flight_time.toFixed(0) + 'ms';
+            document.getElementById('tableStdFlightInt').textContent = features.std_flight_time < 50 ? 'Regular' : 'Irregular';
+            document.getElementById('tableSpeed').textContent = features.typing_speed.toFixed(2) + ' keys/s';
+            document.getElementById('tableSpeedInt').textContent = getInterpretation('speed', features.typing_speed);
+            document.getElementById('tableError').textContent = features.error_proxy.toFixed(3);
+            document.getElementById('tableErrorInt').textContent = features.error_proxy < 0.5 ? 'Low variability' : 'High variability';
+            document.getElementById('tableConsist').textContent = (features.consistency_score * 100).toFixed(1) + '%';
+            document.getElementById('tableConsistInt').textContent = getInterpretation('consistency', features.consistency_score);
+            document.getElementById('tablePause').textContent = features.pause_frequency;
+            document.getElementById('tablePauseInt').textContent = features.pause_frequency > 0 ? 'Detected pauses' : 'No pauses';
+        }
+
+        function clearInput() {
+            typingInput.value = '';
+            keystrokeData.startTime = null;
+            keystrokeData.keyDownTimes = {};
+            keystrokeData.lastKeyUpTime = null;
+            keystrokeData.holdTimes = [];
+            keystrokeData.flightTimes = [];
+            document.getElementById('statsSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'none';
+            typingInput.focus();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keystroke Stress Analyzer - Live Typing Interface</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='typing.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>⌨️ Keystroke Stress Analyzer</h1>
+                <p class="subtitle">Type to analyze your stress level in real-time</p>
+            </div>
+            <div class="header-links">
+                <a href="/" class="nav-link">Dashboard</a>
+                <a href="/metrics" class="nav-link">Metrics</a>
+            </div>
+        </header>
+
+        <!-- Instructions -->
+        <section class="instructions-section">
+            <h2>How It Works</h2>
+            <div class="instructions-grid">
+                <div class="instruction-card">
+                    <div class="step-number">1</div>
+                    <h3>Type Text</h3>
+                    <p>Type the sample text or any text in the input box below</p>
+                </div>
+                <div class="instruction-card">
+                    <div class="step-number">2</div>
+                    <h3>Collect Data</h3>
+                    <p>Your typing patterns are analyzed (hold time, flight time, speed)</p>
+                </div>
+                <div class="instruction-card">
+                    <div class="step-number">3</div>
+                    <h3>Get Results</h3>
+                    <p>See your stress level prediction and detailed keystroke metrics</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Content -->
+        <section class="typing-section">
+            <div class="typing-container">
+                <!-- Sample Text to Type -->
+                <div class="sample-text-box">
+                    <h3>📋 Type This Text:</h3>
+                    <div class="sample-text" id="sampleText">
+                        The quick brown fox jumps over the lazy dog. This is a test for keystroke dynamics analysis.
+                    </div>
+                </div>
+
+                <!-- Input Area -->
+                <div class="input-area">
+                    <h3>⌨️ Type Here:</h3>
+                    <textarea id="typingInput" 
+                              class="typing-input" 
+                              placeholder="Start typing here... Your keystroke patterns will be analyzed in real-time"
+                              spellcheck="false"></textarea>
+                    <div class="input-controls">
+                        <button id="resetBtn" class="btn btn-secondary">Reset</button>
+                        <button id="analyzeBtn" class="btn btn-primary" disabled>Analyze Keystroke Pattern</button>
+                    </div>
+                </div>
+
+                <!-- Typing Statistics -->
+                <div class="stats-box" id="statsBox" style="display: none;">
+                    <h3>📊 Live Typing Statistics</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Keys Typed:</span>
+                            <span class="stat-value" id="keyCount">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Typing Time:</span>
+                            <span class="stat-value" id="typingTime">0s</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Typing Speed:</span>
+                            <span class="stat-value" id="typingSpeed">0 keys/s</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Mean Hold Time:</span>
+                            <span class="stat-value" id="meanHold">0ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Std Hold Time:</span>
+                            <span class="stat-value" id="stdHold">0ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Mean Flight Time:</span>
+                            <span class="stat-value" id="meanFlight">0ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Consistency:</span>
+                            <span class="stat-value" id="consistency">0%</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Pause Count:</span>
+                            <span class="stat-value" id="pauseCount">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Section -->
+                <div class="results-section" id="resultsSection" style="display: none;">
+                    <h3>🎯 Stress Level Analysis</h3>
+                    
+                    <!-- Stress Prediction -->
+                    <div class="prediction-card stress-large">
+                        <div class="prediction-header">
+                            <h4>💪 Overall Stress Level</h4>
+                            <div id="overallStressLabel" class="stress-badge"></div>
+                        </div>
+                        <div class="models-grid">
+                            <div class="model-result">
+                                <h5>🤖 Random Forest</h5>
+                                <div id="rfResult" class="model-result-content">
+                                    <p>Loading...</p>
+                                </div>
+                            </div>
+                            <div class="model-result">
+                                <h5>🚀 XGBoost</h5>
+                                <div id="xgbResult" class="model-result-content">
+                                    <p>Loading...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Metrics -->
+                    <div class="metrics-detail">
+                        <h4>📈 Detailed Keystroke Metrics</h4>
+                        <div class="metrics-table">
+                            <div class="metric-row">
+                                <span class="metric-label">Mean Hold Time (Dwell):</span>
+                                <span class="metric-value" id="detailMeanHold">-</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Std Hold Time:</span>
+                                <span class="metric-value" id="detailStdHold">-</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Mean Flight Time:</span>
+                                <span class="metric-value" id="detailMeanFlight">-</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Std Flight Time:</span>
+                                <span class="metric-value" id="detailStdFlight">-</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Typing Speed:</span>
+                                <span class="metric-value" id="detailSpeed">-</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Error Proxy (Variability):</span>
+                                <span class="metric-value" id="detailError">-</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Consistency Score:</span>
+                                <span class="metric-value" id="detailConsistency">-</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Pause Frequency:</span>
+                                <span class="metric-value" id="detailPause">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Interpretation -->
+                    <div class="interpretation-box" id="interpretationBox"></div>
+                </div>
+
+                <!-- Error Box -->
+                <div class="error-box" id="errorBox" style="display: none;"></div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Keystroke Dynamics Stress Analyzer | Real-time typing analysis</p>
+            <p>Type naturally to get accurate stress level predictions</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='typing.js') }}"></script>
+</body>
+</html>

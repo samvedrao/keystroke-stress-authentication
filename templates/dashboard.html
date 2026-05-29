@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Keystroke Dynamics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>👤 {{ user.username }}'s Dashboard</h1>
+                <p class="subtitle">Your keystroke analysis profile</p>
+            </div>
+            <div class="header-links">
+                <a href="/typing" class="nav-link">⌨️ New Analysis</a>
+                <a href="/profile" class="nav-link">📊 Full Profile</a>
+                <a href="/logout" class="nav-link logout">🚪 Logout</a>
+            </div>
+        </header>
+
+        <!-- Statistics Cards -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">📝</div>
+                <div class="stat-content">
+                    <div class="stat-label">Total Sessions</div>
+                    <div class="stat-value">{{ stats.total_sessions }}</div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">⚡</div>
+                <div class="stat-content">
+                    <div class="stat-label">Avg Typing Speed</div>
+                    <div class="stat-value">{{ "%.2f"|format(stats.avg_typing_speed) }} <span style="font-size: 0.8em;">keys/s</span></div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">🎯</div>
+                <div class="stat-content">
+                    <div class="stat-label">Avg Consistency</div>
+                    <div class="stat-value">{{ "%.1f"|format(stats.avg_consistency * 100) }}%</div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">📊</div>
+                <div class="stat-content">
+                    <div class="stat-label">High Stress Sessions</div>
+                    <div class="stat-value">{{ stats.high_stress_count }}</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chart Section -->
+        <section class="charts-section">
+            <div class="chart-container">
+                <h2>Typing Speed Trends</h2>
+                <canvas id="speedChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Stress Patterns</h2>
+                <canvas id="stressChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Recent Sessions -->
+        <section class="sessions-section">
+            <h2>Recent Sessions</h2>
+            <div class="table-scroll">
+                <table class="sessions-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Typing Speed</th>
+                            <th>Consistency</th>
+                            <th>Random Forest</th>
+                            <th>XGBoost</th>
+                            <th>Ensemble</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if sessions %}
+                            {% for session in sessions %}
+                            <tr class="{% if session.ensemble_prediction == 1 %}high-stress{% endif %}">
+                                <td>{{ session.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ "%.2f"|format(session.typing_speed) }} keys/s</td>
+                                <td>{{ "%.1f"|format(session.consistency_score * 100) }}%</td>
+                                <td>
+                                    <span class="badge {% if session.rf_prediction == 0 %}success{% else %}danger{% endif %}">
+                                        {{ "Low" if session.rf_prediction == 0 else "High" }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge {% if session.xgb_prediction == 0 %}success{% else %}danger{% endif %}">
+                                        {{ "Low" if session.xgb_prediction == 0 else "High" }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge {% if session.ensemble_prediction == 0 %}success{% else %}danger{% endif %}">
+                                        {{ "Low" if session.ensemble_prediction == 0 else "High" }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="no-data">No sessions yet - <a href="/typing">Start analyzing!</a></td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Keystroke Dynamics | User Dashboard | Stress Level Analysis</p>
+        </footer>
+    </div>
+
+    <script>
+        // Fetch user sessions for charts
+        async function loadCharts() {
+            try {
+                const response = await fetch('/api/user/sessions');
+                const sessions = await response.json();
+
+                if (sessions.length === 0) return;
+
+                // Reverse to show oldest first
+                sessions.reverse();
+
+                // Speed Chart
+                const speedCtx = document.getElementById('speedChart').getContext('2d');
+                new Chart(speedCtx, {
+                    type: 'line',
+                    data: {
+                        labels: sessions.map((s, i) => `Session ${i + 1}`),
+                        datasets: [{
+                            label: 'Typing Speed (keys/s)',
+                            data: sessions.map(s => s.typing_speed),
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            tension: 0.1,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'Keys/s' }
+                            }
+                        }
+                    }
+                });
+
+                // Stress Chart
+                const stressCtx = document.getElementById('stressChart').getContext('2d');
+                new Chart(stressCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: sessions.map((s, i) => `Session ${i + 1}`),
+                        datasets: [{
+                            label: 'Low Stress (0)',
+                            data: sessions.map(s => s.ensemble_prediction === 0 ? 1 : 0),
+                            backgroundColor: '#2ecc71'
+                        }, {
+                            label: 'High Stress (1)',
+                            data: sessions.map(s => s.ensemble_prediction === 1 ? 1 : 0),
+                            backgroundColor: '#e74c3c'
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true }
+                        },
+                        scales: {
+                            x: {
+                                stacked: true
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading charts:', error);
+            }
+        }
+
+        loadCharts();
+    </script>
+</body>
+</html>

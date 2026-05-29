@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Keystroke Dynamics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .navbar h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .brand-link {
+            color: white;
+            text-decoration: none;
+        }
+
+        .navbar-links {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .navbar-links a,
+        .navbar-links button {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: opacity 0.3s;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .navbar-links a:hover,
+        .navbar-links button:hover {
+            opacity: 0.8;
+        }
+
+        .user-info {
+            font-size: 0.95rem;
+            opacity: 0.95;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        .welcome-section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .welcome-section h1 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .welcome-section p {
+            color: #7f8c8d;
+            font-size: 1.05rem;
+        }
+
+        .action-buttons {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.9rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #f0f4f8;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-card.link-card {
+            text-decoration: none;
+            display: block;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stat-card.link-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.2);
+        }
+
+        .stat-card h3 {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .value {
+            color: #2c3e50;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .subtitle {
+            color: #95a5a6;
+            font-size: 0.9rem;
+        }
+
+        .sessions-section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .chart-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .chart-card h2 {
+            color: #2c3e50;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+        }
+
+        .sessions-section h2 {
+            color: #2c3e50;
+            margin-bottom: 1.5rem;
+            font-size: 1.3rem;
+        }
+
+        .sessions-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .sessions-table thead {
+            background: #f0f4f8;
+            border-bottom: 2px solid #ecf0f1;
+        }
+
+        .sessions-table th {
+            padding: 1rem;
+            text-align: left;
+            color: #2c3e50;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .sessions-table td {
+            padding: 1rem;
+            border-bottom: 1px solid #ecf0f1;
+            color: #555;
+        }
+
+        .sessions-table tbody tr:hover {
+            background: #f9f9f9;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .badge.regular {
+            background: #e0ffe0;
+            color: #27ae60;
+        }
+
+        .badge.stressed {
+            background: #ffe0e0;
+            color: #c0392b;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #7f8c8d;
+        }
+
+        .empty-state p {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 900px) {
+            .navbar {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+
+            .navbar-links {
+                justify-content: center;
+                gap: 1rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .sessions-table {
+                font-size: 0.9rem;
+            }
+
+            .sessions-table th,
+            .sessions-table td {
+                padding: 0.75rem;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .container {
+                padding: 0 1rem;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+
+            .welcome-section {
+                padding: 1.5rem;
+            }
+
+            .stat-card .value {
+                font-size: 2rem;
+            }
+
+            .sessions-section {
+                padding: 1.5rem;
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <h1><a href="/dashboard" class="brand-link">Keystroke Dynamics</a></h1>
+        <div class="navbar-links">
+            <span class="user-info">{{ user.username }}</span>
+            <a href="/history">History</a>
+            <a href="/profile">Profile</a>
+            <button onclick="logout()">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Welcome Section -->
+        <div class="welcome-section">
+            <h1>Welcome back, {{ user.username }}</h1>
+            <p>Your keystroke analysis dashboard is ready to use. Start typing to analyze your patterns.</p>
+            
+            <div class="action-buttons">
+                <a href="/verify-typing" class="btn btn-primary">Verify and Analyze</a>
+                <a href="/profile" class="btn btn-secondary">My Profile</a>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Sessions</h3>
+                <div class="value">{{ total_sessions }}</div>
+                <div class="subtitle">Typing sessions completed</div>
+            </div>
+
+            <div class="stat-card">
+                <h3>Average Speed</h3>
+                <div class="value">{{ avg_speed|round(2) }}</div>
+                <div class="subtitle">characters per second</div>
+            </div>
+
+            <div class="stat-card">
+                <h3>Best Consistency</h3>
+                <div class="value">{{ best_consistency|round(1) }}%</div>
+                <div class="subtitle">typing pattern consistency</div>
+            </div>
+
+            <a class="stat-card link-card" href="/history">
+                <h3>Regular Sessions</h3>
+                <div class="value">{{ regular_count }}</div>
+                <div class="subtitle">Click to view full progress history</div>
+            </a>
+
+            <div class="stat-card">
+                <h3>Stressed Sessions</h3>
+                <div class="value">{{ stressed_count }}</div>
+                <div class="subtitle">Sessions marked as stressed</div>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <section class="chart-card">
+                <h2>Stress and Mood Trend</h2>
+                <canvas id="trendChart"></canvas>
+            </section>
+            <section class="chart-card">
+                <h2>User Speed Comparison</h2>
+                <canvas id="comparisonChart"></canvas>
+            </section>
+        </div>
+
+        <!-- Recent Sessions -->
+        <div class="sessions-section">
+            <h2>Recent Sessions</h2>
+            
+            {% if sessions %}
+            <table class="sessions-table">
+                <thead>
+                    <tr>
+                        <th>Date & Time</th>
+                        <th>Speed (chars/sec)</th>
+                        <th>Hold Time (ms)</th>
+                        <th>Consistency</th>
+                        <th>Auth Match</th>
+                        <th>Result</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for session in sessions %}
+                    <tr>
+                        <td>{{ session.created_at.strftime('%m/%d/%Y %H:%M') }}</td>
+                        <td>{{ session.typing_speed|round(2) }}</td>
+                        <td>{{ session.mean_hold_time|round(0)|int }}</td>
+                        <td>{{ (session.consistency_score * 100)|round(1) }}%</td>
+                        <td>
+                            {% if session.auth_verified %}
+                            <span class="badge regular">{{ session.auth_match_score|round(1) }}%</span>
+                            {% else %}
+                            <span class="badge stressed">{{ session.auth_match_score|round(1) }}%</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if session.ensemble_prediction == 0 %}
+                            <span class="badge regular">Regular</span>
+                            {% else %}
+                            <span class="badge stressed">Stressed</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <p>No sessions yet. Start typing to create your first session!</p>
+                <a href="/verify-typing" class="btn btn-primary">Start Typing</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        let trendChart = null;
+        let comparisonChart = null;
+
+        function renderTrendChart(timeline) {
+            const ctx = document.getElementById('trendChart');
+            if (!ctx) return;
+
+            const labels = timeline.map(item => new Date(item.timestamp).toLocaleDateString());
+            const moodValues = timeline.map(item => item.ensemble_prediction === 1 ? 1 : 0);
+            const speedValues = timeline.map(item => Number(item.typing_speed || 0));
+
+            if (trendChart) {
+                trendChart.destroy();
+            }
+
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Mood (1 = Stressed, 0 = Regular)',
+                            data: moodValues,
+                            borderColor: '#c0392b',
+                            backgroundColor: 'rgba(192, 57, 43, 0.15)',
+                            yAxisID: 'yMood',
+                            tension: 0.25
+                        },
+                        {
+                            label: 'Typing Speed',
+                            data: speedValues,
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.15)',
+                            yAxisID: 'ySpeed',
+                            tension: 0.25
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        yMood: {
+                            type: 'linear',
+                            position: 'left',
+                            min: 0,
+                            max: 1,
+                            ticks: { stepSize: 1 }
+                        },
+                        ySpeed: {
+                            type: 'linear',
+                            position: 'right',
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderComparisonChart(peerSummary) {
+            const ctx = document.getElementById('comparisonChart');
+            if (!ctx) return;
+
+            const labels = peerSummary.map(item => item.username);
+            const speeds = peerSummary.map(item => Number(item.avg_speed || 0));
+
+            if (comparisonChart) {
+                comparisonChart.destroy();
+            }
+
+            comparisonChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Average Speed',
+                        data: speeds,
+                        backgroundColor: '#667eea'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        async function loadOverviewAnalytics() {
+            try {
+                const response = await fetch('/api/analytics/overview');
+                if (!response.ok) {
+                    return;
+                }
+
+                const data = await response.json();
+                renderTrendChart(data.current_user_timeline || []);
+                renderComparisonChart(data.peer_summary || []);
+            } catch (error) {
+                console.error('Unable to load overview analytics', error);
+            }
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                window.location.href = '/logout';
+            }
+        }
+
+        loadOverviewAnalytics();
+    </script>
+</body>
+</html>

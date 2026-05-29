@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analysis Results - Keystroke Dynamics</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .navbar h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .brand-link {
+            color: white;
+            text-decoration: none;
+        }
+
+        .navbar-links {
+            display: flex;
+            gap: 1.5rem;
+        }
+
+        .navbar-links a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: opacity 0.3s;
+        }
+
+        .navbar-links a:hover {
+            opacity: 0.8;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            margin-bottom: 2rem;
+        }
+
+        .card h2 {
+            color: #2c3e50;
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: #f0f4f8;
+            border-radius: 8px;
+        }
+
+        .result-icon {
+            font-size: 3rem;
+        }
+
+        .result-text h1 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .result-text p {
+            color: #7f8c8d;
+        }
+
+        .predictions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .prediction-card {
+            border: 2px solid #ecf0f1;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .prediction-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.15);
+        }
+
+        .prediction-card h3 {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+
+        .prediction-badge {
+            display: inline-block;
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 0.8rem;
+        }
+
+        .badge-regular {
+            background: #e0ffe0;
+            color: #27ae60;
+        }
+
+        .badge-stressed {
+            background: #ffe0e0;
+            color: #c0392b;
+        }
+
+        .confidence {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .confidence-bar {
+            width: 100%;
+            height: 8px;
+            background: #ecf0f1;
+            border-radius: 4px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .metrics-section {
+            margin-top: 2rem;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .metric-item {
+            background: #f0f4f8;
+            padding: 1rem;
+            border-radius: 8px;
+        }
+
+        .metric-label {
+            color: #7f8c8d;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-value {
+            color: #2c3e50;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .explanation {
+            background: #f9f9f9;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            margin-top: 2rem;
+            line-height: 1.6;
+            color: #555;
+        }
+
+        .explanation h4 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.9rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #f0f4f8;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: #7f8c8d;
+        }
+
+        @media (max-width: 900px) {
+            .predictions-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .result-header {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .container {
+                padding: 0 1rem;
+            }
+
+            .card {
+                padding: 1.5rem;
+            }
+
+            .navbar {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+
+            .result-icon {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <h1><a href="/dashboard" class="brand-link">Keystroke Dynamics</a></h1>
+        <div class="navbar-links">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/history">History</a>
+            <a href="/verify-typing">Verify Again</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Results Card -->
+        <div class="card" id="resultsCard">
+            <div class="loading">
+                Loading analysis results...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get session ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('session_id');
+
+        if (!sessionId) {
+            window.location.href = '/dashboard';
+        } else {
+            loadResults(sessionId);
+        }
+
+        async function loadResults(sessionId) {
+            try {
+                const response = await fetch(`/api/session/${sessionId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    displayResults(data);
+                } else {
+                    showError('Could not load analysis results');
+                }
+            } catch (error) {
+                showError('An error occurred while loading results');
+            }
+        }
+
+        function displayResults(session) {
+            const card = document.getElementById('resultsCard');
+            
+            const isRegular = session.ensemble_prediction === 0;
+            const result = isRegular ? 'Regular Typing Pattern' : 'Stressed Typing Pattern';
+            const description = isRegular 
+                ? 'Your typing pattern appears normal and consistent.'
+                : 'Your typing pattern shows signs of stress or unusual behavior.';
+
+            const rfResult = session.rf_prediction === 0 ? 'Regular' : 'Stressed';
+            const xgbResult = session.xgb_prediction === 0 ? 'Regular' : 'Stressed';
+            const ensembleResult = session.ensemble_prediction === 0 ? 'Regular' : 'Stressed';
+
+            const rfBadge = session.rf_prediction === 0 ? 'badge-regular' : 'badge-stressed';
+            const xgbBadge = session.xgb_prediction === 0 ? 'badge-regular' : 'badge-stressed';
+            const ensembleBadge = session.ensemble_prediction === 0 ? 'badge-regular' : 'badge-stressed';
+
+            card.innerHTML = `
+                <h2>Analysis Results</h2>
+
+                <div class="result-header">
+                    <div class="result-text">
+                        <h1>${result}</h1>
+                        <p>${description}</p>
+                        <p><strong>Mood:</strong> ${session.mood_label || ensembleResult}</p>
+                        <p><strong>Account Match:</strong> ${Number(session.auth_match_score || 0).toFixed(1)}%</p>
+                        <p><strong>Date:</strong> ${new Date(session.created_at).toLocaleString()}</p>
+                    </div>
+                </div>
+
+                <h3 style="color: #2c3e50; margin-top: 2rem; margin-bottom: 1rem;">Model Predictions</h3>
+
+                <div class="predictions-grid">
+                    <div class="prediction-card">
+                        <h3>Random Forest</h3>
+                        <div class="prediction-badge ${rfBadge}">${rfResult}</div>
+                        <div class="confidence">Confidence: ${(session.rf_confidence * 100).toFixed(1)}%</div>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${session.rf_confidence * 100}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="prediction-card">
+                        <h3>XGBoost</h3>
+                        <div class="prediction-badge ${xgbBadge}">${xgbResult}</div>
+                        <div class="confidence">Confidence: ${(session.xgb_confidence * 100).toFixed(1)}%</div>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${session.xgb_confidence * 100}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="prediction-card" style="border-color: #667eea; background: #f0f4f8;">
+                        <h3>Ensemble (Recommended)</h3>
+                        <div class="prediction-badge ${ensembleBadge}">${ensembleResult}</div>
+                        <div class="confidence">Confidence: ${(session.ensemble_confidence * 100).toFixed(1)}%</div>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${session.ensemble_confidence * 100}%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metrics-section">
+                    <h3 style="color: #2c3e50; margin-bottom: 1rem;">Keystroke Metrics</h3>
+                    <div class="metrics-grid">
+                        <div class="metric-item">
+                            <div class="metric-label">Typing Speed</div>
+                            <div class="metric-value">${session.typing_speed.toFixed(2)}</div>
+                            <div style="color: #7f8c8d; font-size: 0.9rem;">chars/second</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Hold Time</div>
+                            <div class="metric-value">${session.mean_hold_time.toFixed(0)}</div>
+                            <div style="color: #7f8c8d; font-size: 0.9rem;">milliseconds</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Consistency</div>
+                            <div class="metric-value">${(session.consistency_score * 100).toFixed(1)}%</div>
+                            <div style="color: #7f8c8d; font-size: 0.9rem;">pattern consistency</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Session Duration</div>
+                            <div class="metric-value">${(session.duration_ms / 1000).toFixed(1)}</div>
+                            <div style="color: #7f8c8d; font-size: 0.9rem;">seconds</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="explanation">
+                    <h4>What This Means</h4>
+                    <p>
+                        Your keystroke dynamics analysis shows your unique typing pattern. The system compares
+                        three machine learning models (Random Forest, XGBoost, and their Ensemble) to provide
+                        a reliable assessment. The <strong>Ensemble prediction (recommended)</strong> combines
+                        the strengths of both models for better accuracy.
+                    </p>
+                    <p style="margin-top: 1rem;">
+                        Variations in your pattern are normal and depend on factors like stress, fatigue, or
+                        environmental conditions. Regular monitoring helps establish your personal typing baseline.
+                    </p>
+                </div>
+
+                <div class="button-group">
+                    <a href="/dashboard" class="btn btn-primary">Back to Dashboard</a>
+                    <a href="/verify-typing" class="btn btn-secondary">Analyze Again</a>
+                </div>
+            `;
+        }
+
+        function showError(message) {
+            const card = document.getElementById('resultsCard');
+            card.innerHTML = `
+                <div style="text-align: center; padding: 3rem; color: #c0392b;">
+                    <p style="font-size: 1.1rem; margin-bottom: 1rem;">${message}</p>
+                    <a href="/dashboard" class="btn btn-primary" style="display: inline-block;">Back to Dashboard</a>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
