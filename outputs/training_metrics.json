@@ -37,5 +37,18 @@
       "avg_precision": 0.64640522875817,
       "avg_recall": 0.9215686274509802
     }
+  },
+  {
+    "timestamp": "2026-05-29T11:55:29.453519",
+    "stress_classification": {
+      "random_forest_accuracy": 1.0,
+      "xgboost_accuracy": 1.0,
+      "best_model": "XGBoost"
+    },
+    "user_authentication": {
+      "avg_accuracy": 0.6699346405228758,
+      "avg_precision": 0.64640522875817,
+      "avg_recall": 0.9215686274509802
+    }
   }
 ]

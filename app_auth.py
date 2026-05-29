@@ -14,6 +14,7 @@ import hashlib
 from flask import Flask, render_template, jsonify, request, send_file, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 import numpy as np
+import traceback
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
@@ -409,7 +410,7 @@ def verify_typing():
                 ensemble_prediction=ensemble_pred,
                 num_keystrokes=len(keystroke_data),
                 duration_ms=duration_ms,
-                text_typed=typed_text[:500]
+                text_typed=typed_text[:500],
             )
             db.session.add(session_record)
             db.session.commit()
@@ -589,7 +590,7 @@ def api_predict_stress():
                 ensemble_prediction=int(combined_pred),
                 num_keystrokes=data.get('num_keystrokes', 0),
                 duration_ms=data.get('duration_ms', 0),
-                text_typed=data.get('text_typed', '')
+                text_typed=data.get('text_typed', ''),
             )
             db.session.add(session_record)
             db.session.commit()
@@ -628,12 +629,19 @@ def api_predict_stress():
 @login_required
 def save_baseline():
     """Save baseline typing profile session"""
+    print('\n/save-baseline called')
     try:
+        print('session user_id (entry):', session.get('user_id'))
+        try:
+            print('incoming json keys:', list((request.json or {}).keys()))
+        except Exception as _:
+            print('could not read request.json directly')
         data = request.json or {}
         user_id = session.get('user_id')
         typed_text = data.get('typed_text', '')
         keystroke_data = data.get('keystroke_data', [])
 
+        print('typed_text length:', len(typed_text), 'keystrokes length:', len(keystroke_data))
         features = calculate_keystroke_features(keystroke_data, typed_text)
 
         duration_ms = 0
@@ -657,13 +665,18 @@ def save_baseline():
             ensemble_prediction=0,
             num_keystrokes=len(keystroke_data),
             duration_ms=duration_ms,
-            text_typed='baseline_profile'
+            text_typed='baseline_profile',
         )
         db.session.add(baseline_session)
         db.session.commit()
 
         return jsonify({'success': True, 'session_id': baseline_session.id}), 201
     except Exception as e:
+        # Log detailed error to server console for debugging
+        print('Error in /save-baseline:', str(e))
+        traceback.print_exc()
+        print('Request data keys:', list((request.json or {}).keys()))
+        print('Session user_id:', session.get('user_id'))
         db.session.rollback()
         return jsonify({'error': f'Failed to save baseline: {str(e)}'}), 500
 
@@ -793,31 +806,47 @@ def api_analytics_overview():
 # ============================================================================
 
 def calculate_keystroke_features(keystroke_data, text_typed):
-    """Calculate keystroke features from raw key events."""
+    """Calculate keystroke features from raw key events.
+
+    Enhanced features added:
+    - median, variance, percentiles, longest pause, entropy
+    - pause counts >1s, pause frequency, bursts
+    - backspace/delete counts and correction streaks (if keys present)
+    - digraph timing for common digraphs (if keys present)
+    """
+    # Minimal default
+    default_features = {
+        'mean_hold_time': 100.0,
+        'median_hold_time': 100.0,
+        'std_hold_time': 20.0,
+        'var_hold_time': 400.0,
+        'mean_flight_time': 50.0,
+        'std_flight_time': 15.0,
+        'var_flight_time': 225.0,
+        'typing_speed': 0.0,
+        'error_proxy': 0.0,
+        'consistency_score': 0.5,
+        'pause_frequency': 0.0,
+        'pause_count_long': 0,
+        'longest_pause': 0,
+        'hold_entropy': 0.0,
+        'burst_frequency': 0.0,
+        'backspace_count': 0,
+        'backspace_ratio': 0.0,
+        'delete_count': 0,
+        'max_correction_streak': 0,
+        'digraph_th': 0.0,
+        'digraph_er': 0.0,
+        'digraph_in': 0.0,
+        'digraph_an': 0.0
+    }
+
     if not keystroke_data or len(keystroke_data) < 2:
-        return {
-            'mean_hold_time': 100.0,
-            'std_hold_time': 20.0,
-            'mean_flight_time': 50.0,
-            'std_flight_time': 15.0,
-            'typing_speed': 0.0,
-            'error_proxy': 0.0,
-            'consistency_score': 0.5,
-            'pause_frequency': 0.0
-        }
+        return default_features
 
     timestamps = [int(k.get('timestamp', 0)) for k in keystroke_data if 'timestamp' in k]
     if len(timestamps) < 2:
-        return {
-            'mean_hold_time': 100.0,
-            'std_hold_time': 20.0,
-            'mean_flight_time': 50.0,
-            'std_flight_time': 15.0,
-            'typing_speed': 0.0,
-            'error_proxy': 0.0,
-            'consistency_score': 0.5,
-            'pause_frequency': 0.0
-        }
+        return default_features
 
     intervals = []
     pauses = 0
@@ -825,7 +854,7 @@ def calculate_keystroke_features(keystroke_data, text_typed):
         delta = max(0, timestamps[i] - timestamps[i - 1])
         if delta > 0:
             intervals.append(delta)
-            if delta > 800:
+            if delta >= 1000:
                 pauses += 1
 
     if not intervals:
@@ -835,24 +864,121 @@ def calculate_keystroke_features(keystroke_data, text_typed):
     typing_speed = min(len(text_typed) / total_duration_sec, 20.0)
 
     mean_hold = float(np.mean(intervals))
+    median_hold = float(np.median(intervals))
     std_hold = float(np.std(intervals))
+    var_hold = float(np.var(intervals))
     mean_flight = float(np.mean(intervals) * 0.5)
     std_flight = float(np.std(intervals) * 0.5)
+    var_flight = float(np.var(intervals) * 0.25)
+
+    # percentiles
+    p10 = float(np.percentile(intervals, 10))
+    p25 = float(np.percentile(intervals, 25))
+    p50 = float(np.percentile(intervals, 50))
+    p75 = float(np.percentile(intervals, 75))
+    p90 = float(np.percentile(intervals, 90))
+
+    # bursts: consecutive intervals under threshold (e.g., 150ms)
+    burst_threshold = 150
+    burst_min_len = 3
+    bursts = 0
+    cur = 0
+    for iv in intervals:
+        if iv < burst_threshold:
+            cur += 1
+        else:
+            if cur >= burst_min_len:
+                bursts += 1
+            cur = 0
+    if cur >= burst_min_len:
+        bursts += 1
+    burst_frequency = bursts / max(total_duration_sec / 60.0, 1.0)
+
+    # entropy over discretized interval bins
+    try:
+        bins = np.histogram_bin_edges(intervals, bins='auto')
+        hist, _ = np.histogram(intervals, bins=bins)
+        probs = hist / np.sum(hist)
+        probs = probs[probs > 0]
+        hold_entropy = float(-np.sum(probs * np.log2(probs)))
+    except Exception:
+        hold_entropy = 0.0
+
+    # backspace / delete stats and correction streaks (if keys present)
+    backspace_count = 0
+    delete_count = 0
+    max_corr_streak = 0
+    cur_streak = 0
+    typed_chars = []
+    for ev in keystroke_data:
+        k = ev.get('key', '') if isinstance(ev.get('key', ''), str) else ''
+        if k == 'Backspace':
+            backspace_count += 1
+            cur_streak += 1
+        else:
+            if cur_streak > max_corr_streak:
+                max_corr_streak = cur_streak
+            cur_streak = 0
+        if k == 'Delete':
+            delete_count += 1
+        # capture typed characters for digraphs if available
+        if k and len(k) == 1:
+            typed_chars.append(k)
+    if cur_streak > max_corr_streak:
+        max_corr_streak = cur_streak
+
+    backspace_ratio = float(backspace_count / max(1, len(keystroke_data)))
+
+    # digraph timing for common digraphs
+    common = ['th', 'er', 'in', 'an']
+    digraph_means = {d: [] for d in common}
+    # build timestamps map for characters sequence
+    char_times = []
+    for ev in keystroke_data:
+        k = ev.get('key', '')
+        ts = ev.get('timestamp', None)
+        if isinstance(k, str) and len(k) == 1 and ts is not None:
+            char_times.append((k, int(ts)))
+    for i in range(1, len(char_times)):
+        prev_c, prev_t = char_times[i - 1]
+        cur_c, cur_t = char_times[i]
+        pair = (prev_c + cur_c).lower()
+        if pair in digraph_means:
+            digraph_means[pair].append(cur_t - prev_t)
+    # aggregate
+    digraph_features = {}
+    for d in common:
+        vals = digraph_means.get(d, [])
+        digraph_features[f'digraph_{d}'] = float(np.mean(vals)) if len(vals) > 0 else 0.0
 
     variation_ratio = std_hold / max(mean_hold, 1.0)
     consistency_score = float(max(0.0, min(1.0, 1.0 - min(variation_ratio, 1.0))))
     pause_frequency = float(pauses / max(total_duration_sec, 1.0))
 
-    return {
+    features = {
         'mean_hold_time': mean_hold,
+        'median_hold_time': median_hold,
         'std_hold_time': std_hold,
+        'var_hold_time': var_hold,
         'mean_flight_time': mean_flight,
         'std_flight_time': std_flight,
+        'var_flight_time': var_flight,
         'typing_speed': typing_speed,
         'error_proxy': 0.0,
         'consistency_score': consistency_score,
-        'pause_frequency': pause_frequency
+        'pause_frequency': pause_frequency,
+        'pause_count_long': pauses,
+        'longest_pause': float(np.max(intervals)),
+        'hold_entropy': hold_entropy,
+        'burst_frequency': burst_frequency,
+        'backspace_count': backspace_count,
+        'backspace_ratio': backspace_ratio,
+        'delete_count': delete_count,
+        'max_correction_streak': max_corr_streak,
     }
+    features.update(digraph_features)
+
+    return features
 
 
 def get_random_sample_text():
@@ -1007,6 +1133,12 @@ def server_error(e):
     return jsonify({'error': 'Server error'}), 500
 
 
+@app.route('/health')
+def health():
+    """Health check endpoint for load balancers and local checks."""
+    return jsonify({'status': 'ok', 'timestamp': datetime.now().isoformat()})
+
+
 # ============================================================================
 # DATABASE INITIALIZATION
 # ============================================================================
@@ -1014,10 +1146,41 @@ def server_error(e):
 def init_db():
     """Initialize database"""
     with app.app_context():
+        # Create any missing tables first
         db.create_all()
+        try:
+            print('SQLALCHEMY DB URL:', db.engine.url)
+        except Exception:
+            try:
+                print('session bind:', db.session.bind)
+            except Exception:
+                pass
+
+        # Lightweight migration: ensure new columns exist on existing tables
+        try:
+            # Check if 'feature_blob' column exists in typing_sessions
+            res = db.session.execute("PRAGMA table_info('typing_sessions')").fetchall()
+            cols = [r[1] for r in res]
+            if 'feature_blob' not in cols:
+                try:
+                    db.session.execute("ALTER TABLE typing_sessions ADD COLUMN feature_blob TEXT")
+                    db.session.commit()
+                    print("Added missing column: typing_sessions.feature_blob")
+                except Exception as e:
+                    db.session.rollback()
+                    print(f"Failed to add feature_blob column: {e}")
+        except Exception:
+            # If PRAGMA or ALTER not supported for the DB engine, skip migration
+            pass
+
         print("Database initialized")
 
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    # Allow configuring host/port via environment for flexibility
+    host = os.environ.get('KEYSTROKE_HOST', '0.0.0.0')
+    port = int(os.environ.get('KEYSTROKE_PORT', '5000'))
+    debug = os.environ.get('FLASK_DEBUG', '1') == '1'
+    # Run without auto-reloader to keep logs stable during debugging
+    app.run(debug=debug, use_reloader=False, host=host, port=port)
