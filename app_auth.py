@@ -124,7 +124,6 @@ class TypingSession(db.Model):
     
     # Metadata
     text_typed = db.Column(db.String(500))  # Store what was typed (optional privacy)
-    feature_blob = db.Column(db.Text)  # JSON dump of full feature vector
     num_keystrokes = db.Column(db.Integer)
     duration_ms = db.Column(db.Integer)  # Session duration in ms
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -412,7 +411,6 @@ def verify_typing():
                 num_keystrokes=len(keystroke_data),
                 duration_ms=duration_ms,
                 text_typed=typed_text[:500],
-                feature_blob=json.dumps(features)
             )
             db.session.add(session_record)
             db.session.commit()
@@ -593,16 +591,6 @@ def api_predict_stress():
                 num_keystrokes=data.get('num_keystrokes', 0),
                 duration_ms=data.get('duration_ms', 0),
                 text_typed=data.get('text_typed', ''),
-                feature_blob=json.dumps({
-                    'mean_hold_time': features[0],
-                    'std_hold_time': features[1],
-                    'mean_flight_time': features[2],
-                    'std_flight_time': features[3],
-                    'typing_speed': features[4],
-                    'error_proxy': features[5],
-                    'consistency_score': features[6],
-                    'pause_frequency': features[7]
-                })
             )
             db.session.add(session_record)
             db.session.commit()
@@ -678,7 +666,6 @@ def save_baseline():
             num_keystrokes=len(keystroke_data),
             duration_ms=duration_ms,
             text_typed='baseline_profile',
-            feature_blob=json.dumps(features)
         )
         db.session.add(baseline_session)
         db.session.commit()
