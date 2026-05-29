@@ -29,19 +29,56 @@ def extract_cmu_features(df):
         # Compute hold time statistics
         hold_times = group[hold_cols].values.flatten()
         hold_times = hold_times[~np.isnan(hold_times)]
-        features_row['mean_hold_time'] = np.mean(hold_times) if len(hold_times) > 0 else 0
-        features_row['std_hold_time'] = np.std(hold_times) if len(hold_times) > 0 else 0
+        if len(hold_times) > 0:
+            features_row['mean_hold_time'] = float(np.mean(hold_times))
+            features_row['median_hold_time'] = float(np.median(hold_times))
+            features_row['std_hold_time'] = float(np.std(hold_times))
+            features_row['var_hold_time'] = float(np.var(hold_times))
+            # percentiles
+            features_row['p10_hold'] = float(np.percentile(hold_times, 10))
+            features_row['p25_hold'] = float(np.percentile(hold_times, 25))
+            features_row['p50_hold'] = float(np.percentile(hold_times, 50))
+            features_row['p75_hold'] = float(np.percentile(hold_times, 75))
+            features_row['p90_hold'] = float(np.percentile(hold_times, 90))
+            features_row['longest_pause'] = float(np.max(hold_times))
+            # entropy over discretized bins
+            try:
+                bins = np.histogram_bin_edges(hold_times, bins='auto')
+                hist, _ = np.histogram(hold_times, bins=bins)
+                probs = hist / np.sum(hist)
+                probs = probs[probs > 0]
+                features_row['hold_entropy'] = float(-np.sum(probs * np.log2(probs)))
+            except Exception:
+                features_row['hold_entropy'] = 0.0
+        else:
+            features_row['mean_hold_time'] = 0
+            features_row['median_hold_time'] = 0
+            features_row['std_hold_time'] = 0
+            features_row['var_hold_time'] = 0
+            features_row['p10_hold'] = 0
+            features_row['p25_hold'] = 0
+            features_row['p50_hold'] = 0
+            features_row['p75_hold'] = 0
+            features_row['p90_hold'] = 0
+            features_row['longest_pause'] = 0
+            features_row['hold_entropy'] = 0.0
         
         # Compute flight time statistics
         flight_times = group[flight_cols].values.flatten()
         flight_times = flight_times[~np.isnan(flight_times)]
-        features_row['mean_flight_time'] = np.mean(flight_times) if len(flight_times) > 0 else 0
-        features_row['std_flight_time'] = np.std(flight_times) if len(flight_times) > 0 else 0
+        if len(flight_times) > 0:
+            features_row['mean_flight_time'] = float(np.mean(flight_times))
+            features_row['std_flight_time'] = float(np.std(flight_times))
+            features_row['var_flight_time'] = float(np.var(flight_times))
+        else:
+            features_row['mean_flight_time'] = 0
+            features_row['std_flight_time'] = 0
+            features_row['var_flight_time'] = 0
         
         # Compute down-down time statistics
         dd_times = group[dd_cols].values.flatten()
         dd_times = dd_times[~np.isnan(dd_times)]
-        features_row['mean_dd_time'] = np.mean(dd_times) if len(dd_times) > 0 else 0
+        features_row['mean_dd_time'] = float(np.mean(dd_times)) if len(dd_times) > 0 else 0
         
         # Typing speed: total keys divided by total time (approximate as 1 / mean DD time)
         mean_dd = features_row['mean_dd_time']
@@ -58,7 +95,7 @@ def extract_cmu_features(df):
         
         # Pause frequency: number of hold times above 1.5x the mean
         threshold = 1.5 * features_row['mean_hold_time']
-        pause_count = np.sum(hold_times > threshold) if len(hold_times) > 0 else 0
+        pause_count = int(np.sum(hold_times > threshold)) if len(hold_times) > 0 else 0
         features_row['pause_frequency'] = pause_count
         
         features_list.append(features_row)
@@ -102,21 +139,27 @@ def extract_freetext_features(df):
         if hold_cols:
             hold_times = group[hold_cols].values.flatten()
             hold_times = hold_times[~np.isnan(hold_times)]
-            features_row['mean_hold_time'] = np.mean(hold_times) if len(hold_times) > 0 else 0
-            features_row['std_hold_time'] = np.std(hold_times) if len(hold_times) > 0 else 0
+            features_row['mean_hold_time'] = float(np.mean(hold_times)) if len(hold_times) > 0 else 0
+            features_row['median_hold_time'] = float(np.median(hold_times)) if len(hold_times) > 0 else 0
+            features_row['std_hold_time'] = float(np.std(hold_times)) if len(hold_times) > 0 else 0
+            features_row['var_hold_time'] = float(np.var(hold_times)) if len(hold_times) > 0 else 0
         else:
             features_row['mean_hold_time'] = 0
+            features_row['median_hold_time'] = 0
             features_row['std_hold_time'] = 0
+            features_row['var_hold_time'] = 0
         
         # Compute flight time statistics
         if flight_cols:
             flight_times = group[flight_cols].values.flatten()
             flight_times = flight_times[~np.isnan(flight_times)]
-            features_row['mean_flight_time'] = np.mean(flight_times) if len(flight_times) > 0 else 0
-            features_row['std_flight_time'] = np.std(flight_times) if len(flight_times) > 0 else 0
+            features_row['mean_flight_time'] = float(np.mean(flight_times)) if len(flight_times) > 0 else 0
+            features_row['std_flight_time'] = float(np.std(flight_times)) if len(flight_times) > 0 else 0
+            features_row['var_flight_time'] = float(np.var(flight_times)) if len(flight_times) > 0 else 0
         else:
             features_row['mean_flight_time'] = 0
             features_row['std_flight_time'] = 0
+            features_row['var_flight_time'] = 0
         
         # For free-text, we approximate mean_dd_time using flight_time
         features_row['mean_dd_time'] = features_row['mean_flight_time'] if features_row['mean_flight_time'] > 0 else 0.1
@@ -139,8 +182,9 @@ def extract_freetext_features(df):
             hold_times = group[hold_cols].values.flatten()
             hold_times = hold_times[~np.isnan(hold_times)]
             threshold = 1.5 * features_row['mean_hold_time']
-            pause_count = np.sum(hold_times > threshold) if len(hold_times) > 0 else 0
+            pause_count = int(np.sum(hold_times > threshold)) if len(hold_times) > 0 else 0
             features_row['pause_frequency'] = pause_count
+            # longest pause already captured if desired
         else:
             features_row['pause_frequency'] = 0
         
