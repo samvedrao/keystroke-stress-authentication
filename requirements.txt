@@ -8,3 +8,7 @@ joblib
 openpyxl
 flask
 flask-sqlalchemy
+werkzeug
+python-dotenv
+pytest
+pytest-cov

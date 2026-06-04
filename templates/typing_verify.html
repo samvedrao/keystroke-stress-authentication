@@ -384,11 +384,31 @@
             updateProgress();
         });
 
-        // Keystroke capture
-        typingInput.addEventListener('keydown', (e) => {
+        typingInput.addEventListener('paste', (e) => {
+            e.preventDefault();
             keystrokeData.push({
                 timestamp: Date.now(),
-                key: e.key.length === 1 ? e.key : 'special'
+                key: 'Paste',
+                type: 'paste'
+            });
+            showMessage('Pasting is disabled for identity verification. Please type the sample manually.', 'error');
+        });
+
+        // Keystroke capture with paired down/up timing.
+        typingInput.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            keystrokeData.push({
+                timestamp: Date.now(),
+                key: e.key,
+                type: 'keydown'
+            });
+        });
+
+        typingInput.addEventListener('keyup', (e) => {
+            keystrokeData.push({
+                timestamp: Date.now(),
+                key: e.key,
+                type: 'keyup'
             });
         });
 
@@ -447,6 +467,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        sample_text: sampleText,
                         typed_text: typed,
                         keystroke_data: keystrokeData
                     })
@@ -458,25 +479,28 @@
                     // Show verification result
                     const resultBox = document.getElementById('resultBox');
                     const matchScore = Number(data.auth_match_score || 0).toFixed(1);
-                    if (data.is_verified) {
+                    if (data.is_verified && !data.requires_retry) {
                         resultBox.className = 'result-box show success';
                         resultBox.innerHTML = `<strong>Identity Verified</strong><br>
                             Account match score: ${matchScore}%. Your keystroke pattern matches your profile.`;
                     } else {
                         resultBox.className = 'result-box show warning';
-                        resultBox.innerHTML = `<strong>Pattern Mismatch</strong><br>
-                            Account match score: ${matchScore}%. Your typing pattern seems different from your profile history.`;
+                        const issues = data.quality && data.quality.issues ? data.quality.issues.join(' ') : '';
+                        resultBox.innerHTML = `<strong>Retry Recommended</strong><br>
+                            Account match score: ${matchScore}%. ${issues || 'Your typing pattern seems different from your profile history.'}`;
                     }
 
-                    // Show analysis
-                    showMessage(`Analysis complete.`, 'success');
-                    
-                    // Redirect after delay
-                    setTimeout(() => {
-                        window.location.href = '/analysis-results?session_id=' + data.session_id;
-                    }, 2000);
+                    if (data.requires_retry) {
+                        showMessage('Please retry the challenge before trusting this verification.', 'error');
+                        submitBtn.disabled = false;
+                    } else {
+                        showMessage(`Analysis complete.`, 'success');
+                        setTimeout(() => {
+                            window.location.href = '/analysis-results?session_id=' + data.session_id;
+                        }, 2000);
+                    }
                 } else {
-                    showMessage('Error analyzing typing. Please try again.', 'error');
+                    showMessage(data.error || 'Error analyzing typing. Please try again.', 'error');
                     submitBtn.disabled = false;
                 }
             } catch (error) {

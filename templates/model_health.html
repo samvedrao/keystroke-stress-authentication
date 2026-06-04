@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Health - Keystroke Dynamics</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; min-height: 100vh; color: #2c3e50; }
+        .navbar { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .brand-link, .navbar a { color: white; text-decoration: none; font-weight: 600; }
+        .navbar-links { display: flex; gap: 1.5rem; align-items: center; }
+        .container { max-width: 1000px; margin: 2rem auto; padding: 0 2rem; }
+        .card { background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+        .card h2 { margin-bottom: 1rem; }
+        .status { display: inline-block; padding: 0.35rem 0.75rem; border-radius: 4px; font-weight: 700; font-size: 0.85rem; }
+        .ok { background: #e0ffe0; color: #27ae60; }
+        .bad { background: #ffe0e0; color: #c0392b; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { text-align: left; padding: 0.8rem; border-bottom: 1px solid #ecf0f1; }
+        th { background: #f0f4f8; }
+        pre { background: #f0f4f8; padding: 1rem; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; }
+        @media (max-width: 700px) {
+            .navbar { flex-direction: column; gap: 1rem; text-align: center; }
+            .container { padding: 0 1rem; }
+            .card { overflow-x: auto; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1><a href="/dashboard" class="brand-link">Keystroke Dynamics</a></h1>
+        <div class="navbar-links">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/profile">Profile</a>
+            <a href="/model-comparison">Compare</a>
+            <a href="/admin">Admin</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <section class="card">
+            <h2>Model Health</h2>
+            <p id="summary">Loading model status...</p>
+            <p style="margin-top:1rem;"><a href="/download/project-report">Download project report</a></p>
+        </section>
+
+        <section class="card">
+            <h2>Artifacts</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Model</th>
+                        <th>Status</th>
+                        <th>Size</th>
+                        <th>Modified</th>
+                        <th>Path</th>
+                    </tr>
+                </thead>
+                <tbody id="modelRows">
+                    <tr><td colspan="5">Loading...</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="card">
+            <h2>Latest Training Metrics</h2>
+            <pre id="metrics">Loading...</pre>
+        </section>
+    </main>
+
+    <script>
+        async function loadHealth() {
+            const summary = document.getElementById('summary');
+            const rows = document.getElementById('modelRows');
+            const metrics = document.getElementById('metrics');
+            try {
+                const response = await fetch('/api/model-health');
+                const data = await response.json();
+                summary.innerHTML = data.all_models_present
+                    ? '<span class="status ok">All models present</span> Checked at ' + new Date(data.checked_at).toLocaleString()
+                    : '<span class="status bad">Missing model artifacts</span> Checked at ' + new Date(data.checked_at).toLocaleString();
+                rows.innerHTML = (data.models || []).map(model => `
+                    <tr>
+                        <td>${model.name}</td>
+                        <td><span class="status ${model.exists ? 'ok' : 'bad'}">${model.exists ? 'Present' : 'Missing'}</span></td>
+                        <td>${model.size_kb} KB</td>
+                        <td>${model.modified_at ? new Date(model.modified_at).toLocaleString() : '-'}</td>
+                        <td>${model.path}</td>
+                    </tr>
+                `).join('');
+                metrics.textContent = JSON.stringify(data.latest_metrics || {}, null, 2);
+            } catch (error) {
+                summary.innerHTML = '<span class="status bad">Unable to load model health</span>';
+                rows.innerHTML = '<tr><td colspan="5">Unable to load model health.</td></tr>';
+                metrics.textContent = '{}';
+            }
+        }
+
+        loadHealth();
+    </script>
+</body>
+</html>

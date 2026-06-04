@@ -329,6 +329,8 @@
             <span class="user-info">{{ user.username }}</span>
             <a href="/history">History</a>
             <a href="/profile">Profile</a>
+            <a href="/admin">Admin</a>
+            <a href="/model-health">Model Health</a>
             <button onclick="logout()">Logout</button>
         </div>
     </nav>
@@ -342,6 +344,8 @@
             <div class="action-buttons">
                 <a href="/verify-typing" class="btn btn-primary">Verify and Analyze</a>
                 <a href="/profile" class="btn btn-secondary">My Profile</a>
+                <a href="/api/export/feature-blobs/csv" class="btn btn-secondary">Export CSV</a>
+                <a href="/download/project-report" class="btn btn-secondary">Project Report</a>
             </div>
         </div>
 
@@ -376,6 +380,12 @@
                 <div class="value">{{ stressed_count }}</div>
                 <div class="subtitle">Sessions marked as stressed</div>
             </div>
+
+            <div class="stat-card" id="continuousAuthCard">
+                <h3>Account Confidence</h3>
+                <div class="value" id="continuousAuthValue">--</div>
+                <div class="subtitle" id="continuousAuthSubtitle">Loading continuous auth status</div>
+            </div>
         </div>
 
         <div class="charts-grid">
@@ -386,6 +396,10 @@
             <section class="chart-card">
                 <h2>User Speed Comparison</h2>
                 <canvas id="comparisonChart"></canvas>
+            </section>
+            <section class="chart-card">
+                <h2>Identity Confidence Timeline</h2>
+                <canvas id="anomalyChart"></canvas>
             </section>
         </div>
 
@@ -407,7 +421,7 @@
                 </thead>
                 <tbody>
                     {% for session in sessions %}
-                    <tr>
+                    <tr onclick="window.location.href='/analysis-results?session_id={{ session.id }}'" style="cursor:pointer;" title="Open session details">
                         <td>{{ session.created_at.strftime('%m/%d/%Y %H:%M') }}</td>
                         <td>{{ session.typing_speed|round(2) }}</td>
                         <td>{{ session.mean_hold_time|round(0)|int }}</td>
@@ -442,6 +456,7 @@
     <script>
         let trendChart = null;
         let comparisonChart = null;
+        let anomalyChart = null;
 
         function renderTrendChart(timeline) {
             const ctx = document.getElementById('trendChart');
@@ -543,6 +558,59 @@
             }
         }
 
+        async function loadContinuousAuthStatus() {
+            try {
+                const response = await fetch('/api/continuous_status');
+                if (!response.ok) return;
+                const data = await response.json();
+                const value = document.getElementById('continuousAuthValue');
+                const subtitle = document.getElementById('continuousAuthSubtitle');
+                if (data.last_score === null || data.last_score === undefined) {
+                    value.textContent = 'New';
+                    subtitle.textContent = 'Collect more sessions to activate monitoring';
+                    return;
+                }
+                value.textContent = Number(data.last_score || 0).toFixed(1) + '%';
+                subtitle.textContent = data.is_authenticated ? 'Typing profile currently trusted' : 'Recent typing pattern needs review';
+            } catch (error) {
+                console.error('Unable to load continuous auth status', error);
+            }
+        }
+
+        async function loadAnomalyTimeline() {
+            try {
+                const response = await fetch('/api/anomaly-timeline');
+                if (!response.ok) return;
+                const data = await response.json();
+                const rows = data.timeline || [];
+                const ctx = document.getElementById('anomalyChart');
+                if (!ctx) return;
+                if (anomalyChart) anomalyChart.destroy();
+                anomalyChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: rows.map(row => new Date(row.timestamp).toLocaleDateString()),
+                        datasets: [{
+                            label: 'Identity Confidence',
+                            data: rows.map(row => row.auth_match_score),
+                            borderColor: '#27ae60',
+                            backgroundColor: 'rgba(39,174,96,0.15)',
+                            tension: 0.25
+                        }, {
+                            label: 'Retry Threshold',
+                            data: rows.map(() => data.threshold),
+                            borderColor: '#c0392b',
+                            borderDash: [6, 6],
+                            pointRadius: 0
+                        }]
+                    },
+                    options: { responsive: true, scales: { y: { min: 0, max: 100 } } }
+                });
+            } catch (error) {
+                console.error('Unable to load anomaly timeline', error);
+            }
+        }
+
         function logout() {
             if (confirm('Are you sure you want to logout?')) {
                 window.location.href = '/logout';
@@ -550,6 +618,8 @@
         }
 
         loadOverviewAnalytics();
+        loadContinuousAuthStatus();
+        loadAnomalyTimeline();
     </script>
 </body>
 </html>

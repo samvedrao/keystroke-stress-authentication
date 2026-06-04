@@ -1,33 +1,54 @@
-"""
-Flask web application with User Authentication for Keystroke Dynamics
-"""
-
-import os
 import sys
+import os
 import json
 import joblib
 import random
 from datetime import datetime, timedelta
 from functools import wraps
 import hashlib
+import threading
+import time
+from typing import Optional
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from flask import Flask, render_template, jsonify, request, send_file, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 import numpy as np
 import traceback
+from sqlalchemy import inspect, text
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+from src.metrics_tracker import MetricsTracker
+from src.load_data import load_cmu
+from src.features import extract_cmu_features
 
-from metrics_tracker import MetricsTracker
-from load_data import load_cmu
-from features import extract_cmu_features
+# Add keystroke_project to path for importing modules
+KEYSTROKE_PROJECT_PATH = os.path.join(os.path.dirname(__file__), 'keystroke_project')
+if KEYSTROKE_PROJECT_PATH not in sys.path:
+    sys.path.insert(0, KEYSTROKE_PROJECT_PATH)
+
+# Import continuous auth and config from keystroke_project
+import importlib.util
+continuous_auth_path = os.path.join(KEYSTROKE_PROJECT_PATH, 'src', 'continuous_auth.py')
+spec = importlib.util.spec_from_file_location("continuous_auth", continuous_auth_path)
+continuous_auth_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(continuous_auth_module)
+
+project_start_continuous_auth_checker = continuous_auth_module.start_continuous_auth_checker
+check_user_continuous_auth = continuous_auth_module.check_user_continuous_auth
+
+# Load config
+config_path = os.path.join(KEYSTROKE_PROJECT_PATH, 'config.py')
+spec = importlib.util.spec_from_file_location("config", config_path)
+config_module = importlib.util.module_from_spec(spec)
+sys.modules['keystroke_project.config'] = config_module
+spec.loader.exec_module(config_module)
+
+config = config_module.get_config()
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates', static_folder='static')
+app.config.from_object(config)
 app.config['JSON_SORT_KEYS'] = False
-app.secret_key = 'keystroke_dynamics_secret_2026'  # Change in production
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///keystroke_db.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 
 @app.after_request
@@ -39,13 +60,19 @@ def add_no_cache_headers(response):
     return response
 
 # Initialize database
-db = SQLAlchemy(app)
+db = SQLAlchemy(app, session_options={'expire_on_commit': False})
 
 # Initialize metrics tracker
 tracker = MetricsTracker()
 
 # Get base directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASELINE_TARGET_SAMPLES = 3
+BASELINE_MIN_ACCURACY = 0.75
+QUALITY_MIN_KEYSTROKES = 8
+QUALITY_MIN_DURATION_MS = 800
+MAX_REASONABLE_TYPING_SPEED = 18.0
+AUTH_RETRY_THRESHOLD = 65.0
 
 # Randomized practice prompts (20 options, each with two sentences)
 SAMPLE_TEXTS = [
@@ -91,11 +118,28 @@ class User(db.Model):
     
     def set_password(self, password):
         """Hash and set password"""
-        self.password_hash = hashlib.sha256(password.encode()).hexdigest()
+        # Use PBKDF2 (Werkzeug) for stronger hashing
+        self.password_hash = generate_password_hash(password, method='pbkdf2:sha256', salt_length=16)
     
     def check_password(self, password):
         """Verify password"""
-        return self.password_hash == hashlib.sha256(password.encode()).hexdigest()
+        # Support both PBKDF2 hashed passwords and legacy SHA256 hashes.
+        try:
+            if isinstance(self.password_hash, str) and self.password_hash.startswith('pbkdf2:'):
+                return check_password_hash(self.password_hash, password)
+            # Legacy SHA256 comparison
+            if self.password_hash == hashlib.sha256(password.encode()).hexdigest():
+                # Transparent upgrade: re-hash with PBKDF2 and persist
+                try:
+                    self.password_hash = generate_password_hash(password, method='pbkdf2:sha256', salt_length=16)
+                    db.session.add(self)
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                return True
+        except Exception:
+            pass
+        return False
 
 
 class TypingSession(db.Model):
@@ -126,6 +170,8 @@ class TypingSession(db.Model):
     text_typed = db.Column(db.String(500))  # Store what was typed (optional privacy)
     num_keystrokes = db.Column(db.Integer)
     duration_ms = db.Column(db.Integer)  # Session duration in ms
+    # Store full feature JSON blob for later analysis and debugging
+    feature_blob = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def to_dict(self):
@@ -136,6 +182,14 @@ class TypingSession(db.Model):
             ensemble_conf = float((rf_conf + xgb_conf) / 2.0)
         else:
             ensemble_conf = float(max(rf_conf, xgb_conf))
+        feature_blob = None
+        if self.feature_blob:
+            try:
+                feature_blob = json.loads(self.feature_blob)
+            except Exception:
+                feature_blob = None
+        is_baseline = self.text_typed == 'baseline_profile' or bool((feature_blob or {}).get('is_baseline'))
+        stress_model_evaluated = not is_baseline and self.rf_confidence is not None and self.xgb_confidence is not None
         return {
             'id': self.id,
             'timestamp': self.created_at.isoformat(),
@@ -159,7 +213,28 @@ class TypingSession(db.Model):
             'ensemble_label': 'High Stress' if self.ensemble_prediction == 1 else 'Low Stress',
             'mood_label': 'Stressed' if self.ensemble_prediction == 1 else 'Regular',
             'num_keystrokes': self.num_keystrokes,
-            'duration_ms': self.duration_ms
+            'duration_ms': self.duration_ms,
+            'feature_blob': feature_blob,
+            'is_baseline': is_baseline,
+            'stress_model_evaluated': stress_model_evaluated
+        }
+
+
+class ContinuousAuthStatus(db.Model):
+    """Store continuous authentication status per user."""
+    __tablename__ = 'continuous_auth'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
+    last_score = db.Column(db.Float)
+    is_authenticated = db.Column(db.Boolean, default=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'user_id': self.user_id,
+            'last_score': float(self.last_score or 0.0),
+            'is_authenticated': bool(self.is_authenticated),
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 
@@ -170,8 +245,10 @@ class TypingSession(db.Model):
 def load_models():
     """Load all trained models."""
     try:
-        rf_path = os.path.join(BASE_DIR, 'outputs', 'models', 'stress_random_forest.pkl')
-        xgb_path = os.path.join(BASE_DIR, 'outputs', 'models', 'stress_xgboost.pkl')
+        rf_calibrated_path = os.path.join(BASE_DIR, 'outputs', 'models', 'stress_random_forest_calibrated.pkl')
+        xgb_calibrated_path = os.path.join(BASE_DIR, 'outputs', 'models', 'stress_xgboost_calibrated.pkl')
+        rf_path = rf_calibrated_path if os.path.exists(rf_calibrated_path) else os.path.join(BASE_DIR, 'outputs', 'models', 'stress_random_forest.pkl')
+        xgb_path = xgb_calibrated_path if os.path.exists(xgb_calibrated_path) else os.path.join(BASE_DIR, 'outputs', 'models', 'stress_xgboost.pkl')
         auth_path = os.path.join(BASE_DIR, 'outputs', 'models', 'auth_models.pkl')
         
         stress_rf = joblib.load(rf_path) if os.path.exists(rf_path) else None
@@ -184,6 +261,334 @@ def load_models():
         return None, None, None
 
 
+def calculate_text_accuracy(sample_text, typed_text):
+    """Return character-level accuracy for a typed sample."""
+    if not sample_text:
+        return 1.0
+    typed_text = typed_text or ''
+    correct = sum(
+        1 for i, expected in enumerate(sample_text)
+        if i < len(typed_text) and typed_text[i] == expected
+    )
+    length_penalty = abs(len(sample_text) - len(typed_text))
+    return max(0.0, min(1.0, (correct - length_penalty) / max(len(sample_text), 1)))
+
+
+def sanitize_keystroke_events(keystroke_data, limit=300):
+    """Return a privacy-conscious event payload for replay/debug visualizations."""
+    events = []
+    for ev in (keystroke_data or [])[:limit]:
+        timestamp = ev.get('timestamp', ev.get('time'))
+        try:
+            timestamp = int(timestamp)
+        except Exception:
+            continue
+        key = str(ev.get('key', ''))
+        if len(key) == 1 and key not in (' ',):
+            key = 'char'
+        elif key == ' ':
+            key = 'space'
+        elif key not in ('Backspace', 'Delete', 'Shift', 'Enter', 'Tab', 'Control', 'Alt', 'Meta'):
+            key = 'special'
+        events.append({
+            'timestamp': timestamp,
+            'key': key,
+            'type': ev.get('type', ev.get('event', 'keydown'))
+        })
+    return events
+
+
+def evaluate_sample_quality(keystroke_data, typed_text, sample_text=''):
+    """Score whether a typing sample is usable for enrollment or verification."""
+    events = keystroke_data or []
+    timestamps = []
+    paste_detected = False
+    for ev in events:
+        event_type = ev.get('type', ev.get('event', ''))
+        if event_type == 'paste' or ev.get('key') == 'Paste':
+            paste_detected = True
+        timestamp = ev.get('timestamp', ev.get('time'))
+        try:
+            timestamps.append(int(timestamp))
+        except Exception:
+            pass
+
+    duration_ms = max(timestamps) - min(timestamps) if len(timestamps) >= 2 else 0
+    typed_len = len(typed_text or '')
+    speed = (typed_len / max(duration_ms / 1000.0, 0.1)) if typed_len else 0.0
+    accuracy = calculate_text_accuracy(sample_text, typed_text) if sample_text else 1.0
+
+    issues = []
+    if paste_detected:
+        issues.append('Paste detected. Type the sample manually.')
+    if len(events) < QUALITY_MIN_KEYSTROKES:
+        issues.append('Sample is too short to analyze reliably.')
+    if duration_ms < QUALITY_MIN_DURATION_MS:
+        issues.append('Sample was completed too quickly to trust.')
+    if speed > MAX_REASONABLE_TYPING_SPEED:
+        issues.append('Typing speed is unrealistically high.')
+    if sample_text and accuracy < BASELINE_MIN_ACCURACY:
+        issues.append('Typed text does not match the sample closely enough.')
+
+    penalty = 0
+    penalty += 35 if paste_detected else 0
+    penalty += 20 if len(events) < QUALITY_MIN_KEYSTROKES else 0
+    penalty += 20 if duration_ms < QUALITY_MIN_DURATION_MS else 0
+    penalty += 20 if speed > MAX_REASONABLE_TYPING_SPEED else 0
+    penalty += max(0, int((BASELINE_MIN_ACCURACY - accuracy) * 100)) if sample_text else 0
+    score = max(0, min(100, 100 - penalty))
+
+    return {
+        'score': score,
+        'is_usable': not issues,
+        'issues': issues,
+        'duration_ms': duration_ms,
+        'typing_speed': round(speed, 2),
+        'accuracy': round(accuracy * 100.0, 1),
+        'paste_detected': paste_detected
+    }
+
+
+def get_baseline_sessions(user_id):
+    """Return sessions that were saved as enrollment baseline samples."""
+    return TypingSession.query.filter_by(
+        user_id=user_id,
+        text_typed='baseline_profile'
+    ).order_by(TypingSession.created_at.asc()).all()
+
+
+def get_baseline_status(user_id):
+    """Summarize baseline enrollment progress and quality."""
+    baseline_sessions = get_baseline_sessions(user_id)
+    accuracies = []
+    consistencies = []
+
+    for session_obj in baseline_sessions:
+        consistencies.append(float(session_obj.consistency_score or 0.0))
+        if session_obj.feature_blob:
+            try:
+                blob = json.loads(session_obj.feature_blob)
+                if 'sample_accuracy' in blob:
+                    accuracies.append(float(blob.get('sample_accuracy') or 0.0))
+            except Exception:
+                pass
+
+    avg_accuracy = float(np.mean(accuracies)) if accuracies else (1.0 if baseline_sessions else 0.0)
+    avg_consistency = float(np.mean(consistencies)) if consistencies else 0.0
+    quality_score = round(((avg_accuracy * 0.6) + (avg_consistency * 0.4)) * 100.0, 1)
+    count = len(baseline_sessions)
+
+    if count >= BASELINE_TARGET_SAMPLES and quality_score >= 75:
+        label = 'Strong'
+    elif count >= BASELINE_TARGET_SAMPLES:
+        label = 'Needs review'
+    elif count > 0:
+        label = 'In progress'
+    else:
+        label = 'Not started'
+
+    return {
+        'target_samples': BASELINE_TARGET_SAMPLES,
+        'completed_samples': count,
+        'remaining_samples': max(0, BASELINE_TARGET_SAMPLES - count),
+        'is_complete': count >= BASELINE_TARGET_SAMPLES,
+        'avg_accuracy': round(avg_accuracy * 100.0, 1),
+        'avg_consistency': round(avg_consistency * 100.0, 1),
+        'quality_score': quality_score,
+        'quality_label': label
+    }
+
+
+def build_session_explanation(session_obj, previous_sessions=None):
+    """Explain which metrics drove a session's auth/stress result."""
+    previous_sessions = previous_sessions or []
+    features = session_to_feature_dict(session_obj)
+    explanations = []
+
+    if previous_sessions:
+        comparisons = [
+            ('typing_speed', 'Typing speed', 'chars/sec'),
+            ('mean_hold_time', 'Hold time', 'ms'),
+            ('mean_flight_time', 'Flight time', 'ms'),
+            ('consistency_score', 'Consistency', ''),
+            ('pause_frequency', 'Pause frequency', '')
+        ]
+        for key, label, unit in comparisons:
+            prior_values = [
+                float(getattr(s, key, 0.0) or 0.0)
+                for s in previous_sessions
+                if getattr(s, key, None) is not None
+            ]
+            if not prior_values:
+                continue
+            baseline = float(np.mean(prior_values))
+            current = float(features.get(key, 0.0))
+            if abs(baseline) < 1e-6:
+                continue
+            change = ((current - baseline) / abs(baseline)) * 100.0
+            if abs(change) >= 15:
+                direction = 'higher' if change > 0 else 'lower'
+                suffix = f' {unit}' if unit else ''
+                explanations.append(
+                    f"{label} was {abs(change):.0f}% {direction} than your recent baseline "
+                    f"({current:.2f}{suffix} vs {baseline:.2f}{suffix})."
+                )
+
+    if float(session_obj.consistency_score or 0.0) < 0.55:
+        explanations.append("Typing consistency was low, which can reduce identity confidence.")
+    if float(session_obj.pause_frequency or 0.0) > 0.2:
+        explanations.append("Pauses were more frequent than expected during this sample.")
+    if session_obj.ensemble_prediction == 1:
+        explanations.append("The ensemble model marked this sample as stressed or unusual.")
+    if not explanations:
+        explanations.append("This session stayed close to your current typing profile.")
+
+    return explanations[:5]
+
+
+def get_model_health():
+    """Return model artifact availability and basic runtime health."""
+    rf_calibrated_path = os.path.join(BASE_DIR, 'outputs', 'models', 'stress_random_forest_calibrated.pkl')
+    xgb_calibrated_path = os.path.join(BASE_DIR, 'outputs', 'models', 'stress_xgboost_calibrated.pkl')
+    calibration_available = os.path.exists(rf_calibrated_path) and os.path.exists(xgb_calibrated_path)
+    model_specs = [
+        ('stress_random_forest', os.path.join(BASE_DIR, 'outputs', 'models', 'stress_random_forest.pkl')),
+        ('stress_random_forest_calibrated', rf_calibrated_path),
+        ('stress_xgboost', os.path.join(BASE_DIR, 'outputs', 'models', 'stress_xgboost.pkl')),
+        ('stress_xgboost_calibrated', xgb_calibrated_path),
+        ('auth_models', os.path.join(BASE_DIR, 'outputs', 'models', 'auth_models.pkl')),
+    ]
+    models = []
+    for name, path in model_specs:
+        exists = os.path.exists(path)
+        models.append({
+            'name': name,
+            'path': os.path.relpath(path, BASE_DIR),
+            'exists': exists,
+            'size_kb': round(os.path.getsize(path) / 1024.0, 1) if exists else 0,
+            'modified_at': datetime.fromtimestamp(os.path.getmtime(path)).isoformat() if exists else None
+        })
+
+    latest_metrics = tracker.get_latest_metrics()
+    return {
+        'all_models_present': all(item['exists'] for item in models),
+        'models': models,
+        'latest_metrics': latest_metrics,
+        'calibration': {
+            'available': calibration_available,
+            'method': 'sigmoid CalibratedClassifierCV' if calibration_available else 'Not fitted',
+            'note': 'The app automatically prefers calibrated stress model artifacts when they exist.' if calibration_available else 'Run scripts/train_calibrated_models.py to create calibrated stress confidence artifacts.'
+        },
+        'database_uri': str(db.engine.url) if db.engine else None,
+        'checked_at': datetime.now().isoformat()
+    }
+
+
+def get_model_comparison_payload():
+    """Build model comparison details for the UI."""
+    latest_metrics = tracker.get_latest_metrics() or {}
+    stress_metrics = latest_metrics.get('stress_classification', {}) if isinstance(latest_metrics, dict) else {}
+    model_health = get_model_health()
+    return {
+        'models': [
+            {
+                'name': 'Random Forest',
+                'artifact': 'outputs/models/stress_random_forest.pkl',
+                'accuracy': stress_metrics.get('random_forest_accuracy'),
+                'strength': 'Stable baseline model with useful feature importance.',
+                'limitation': 'Raw probabilities may need calibration.'
+            },
+            {
+                'name': 'XGBoost',
+                'artifact': 'outputs/models/stress_xgboost.pkl',
+                'accuracy': stress_metrics.get('xgboost_accuracy'),
+                'strength': 'Captures non-linear typing behavior well.',
+                'limitation': 'Can become overconfident without calibration.'
+            },
+            {
+                'name': 'Ensemble',
+                'artifact': 'Runtime weighted vote',
+                'accuracy': stress_metrics.get('best_accuracy') or stress_metrics.get('ensemble_accuracy'),
+                'strength': 'Combines both stress models for a steadier result.',
+                'limitation': 'Currently averages raw confidence values.'
+            }
+        ],
+        'health': model_health,
+        'plots': {
+            'confusion_matrix': '/outputs/plots/stress_confusion_matrix.png',
+            'feature_importance': '/outputs/plots/stress_feature_importance.png',
+            'auth_accuracy': '/outputs/plots/auth_accuracy.png'
+        }
+    }
+
+
+def get_admin_overview_payload():
+    """Return project-level operational stats."""
+    users = User.query.all()
+    sessions = TypingSession.query.order_by(TypingSession.created_at.asc()).all()
+    baseline_count = len([s for s in sessions if s.text_typed == 'baseline_profile'])
+    verification_count = len(sessions) - baseline_count
+    stress_count = len([s for s in sessions if s.ensemble_prediction == 1 and s.text_typed != 'baseline_profile'])
+    avg_auth = 0.0
+    if sessions:
+        score_map_by_user = {}
+        auth_scores = []
+        for user_obj in users:
+            user_sessions = [s for s in sessions if s.user_id == user_obj.id]
+            score_map_by_user[user_obj.id] = build_session_auth_scores(user_sessions)
+            auth_scores.extend(info['auth_match_score'] for info in score_map_by_user[user_obj.id].values())
+        avg_auth = float(np.mean(auth_scores)) if auth_scores else 0.0
+
+    return {
+        'total_users': len(users),
+        'total_sessions': len(sessions),
+        'baseline_sessions': baseline_count,
+        'verification_sessions': verification_count,
+        'stress_sessions': stress_count,
+        'avg_auth_match': round(avg_auth, 1),
+        'model_health': get_model_health(),
+        'baseline_target_samples': BASELINE_TARGET_SAMPLES
+    }
+
+
+def build_project_report_html(user_id=None):
+    """Generate a lightweight HTML report for project submission/export."""
+    admin = get_admin_overview_payload()
+    model_comparison = get_model_comparison_payload()
+    generated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Keystroke Dynamics Project Report</title>
+<style>body{{font-family:Segoe UI,Arial,sans-serif;margin:32px;color:#2c3e50;line-height:1.5}}h1,h2{{color:#26384d}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}}.card{{border:1px solid #dfe6ee;border-radius:8px;padding:14px;background:#f8fafc}}table{{width:100%;border-collapse:collapse}}td,th{{padding:8px;border-bottom:1px solid #e6edf5;text-align:left}}</style></head>
+<body>
+<h1>Keystroke Dynamics Authentication and Stress Analysis</h1>
+<p>Generated at {generated_at}</p>
+<h2>System Overview</h2>
+<div class="grid">
+<div class="card"><strong>Total users</strong><br>{admin['total_users']}</div>
+<div class="card"><strong>Total sessions</strong><br>{admin['total_sessions']}</div>
+<div class="card"><strong>Baseline sessions</strong><br>{admin['baseline_sessions']}</div>
+<div class="card"><strong>Verification sessions</strong><br>{admin['verification_sessions']}</div>
+<div class="card"><strong>Average auth match</strong><br>{admin['avg_auth_match']}%</div>
+</div>
+<h2>Implemented Features</h2>
+<ul>
+<li>Multi-sample baseline enrollment with quality scoring.</li>
+<li>Real keydown/keyup timing for hold and flight features.</li>
+<li>Stress prediction with Random Forest, XGBoost, and ensemble output.</li>
+<li>Continuous authentication scoring and anomaly timeline.</li>
+<li>Session replay visualization and explainable result summaries.</li>
+<li>Data export, model health, model comparison, and admin dashboard.</li>
+</ul>
+<h2>Model Comparison</h2>
+<table><thead><tr><th>Model</th><th>Accuracy</th><th>Strength</th><th>Limitation</th></tr></thead><tbody>
+{''.join(f"<tr><td>{m['name']}</td><td>{m.get('accuracy') if m.get('accuracy') is not None else 'N/A'}</td><td>{m['strength']}</td><td>{m['limitation']}</td></tr>" for m in model_comparison['models'])}
+</tbody></table>
+<h2>Confidence Note</h2>
+<p>Baseline enrollment sessions are not stress-scored and should not display model confidence. Runtime stress confidence uses raw model probabilities unless calibrated models are trained and promoted.</p>
+</body></html>"""
+
+
 # ============================================================================
 # AUTHENTICATION DECORATORS
 # ============================================================================
@@ -193,6 +598,8 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
+            if request.path.startswith('/api/') or request.is_json:
+                return jsonify({'error': 'Authentication required'}), 401
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -346,7 +753,12 @@ def typing():
 @login_required
 def setup_typing():
     """Setup baseline typing profile for new users"""
-    return render_template('typing_baseline.html', sample_text=get_random_sample_text())
+    user_id = session.get('user_id')
+    return render_template(
+        'typing_baseline.html',
+        sample_text=get_random_sample_text(),
+        baseline_status=get_baseline_status(user_id)
+    )
 
 
 @app.route('/verify-typing', methods=['GET', 'POST'])
@@ -358,9 +770,14 @@ def verify_typing():
             data = request.json or {}
             user_id = session.get('user_id')
             typed_text = data.get('typed_text', '')
+            sample_text = data.get('sample_text', '')
             keystroke_data = data.get('keystroke_data', [])
 
             features = calculate_keystroke_features(keystroke_data, typed_text)
+            quality = evaluate_sample_quality(keystroke_data, typed_text, sample_text)
+            features['sample_quality'] = quality
+            features['keystroke_events'] = sanitize_keystroke_events(keystroke_data)
+            features['is_baseline'] = False
 
             stress_rf, stress_xgb, _ = load_models()
             if stress_rf is None or stress_xgb is None:
@@ -387,13 +804,15 @@ def verify_typing():
 
             previous_sessions = TypingSession.query.filter_by(user_id=user_id).all()
             auth_match_score = calculate_auth_match_score(features, previous_sessions)
-            is_verified = auth_match_score >= 65.0
+            is_verified = auth_match_score >= AUTH_RETRY_THRESHOLD
+            requires_retry = (not is_verified) or (not quality['is_usable'])
 
             duration_ms = 0
             if len(keystroke_data) >= 2:
                 duration_ms = int(max(0, keystroke_data[-1].get('timestamp', 0) - keystroke_data[0].get('timestamp', 0)))
 
-            session_record = TypingSession(
+            # Build kwargs and only include feature_blob if the DB column exists
+            kwargs = dict(
                 user_id=user_id,
                 mean_hold_time=features.get('mean_hold_time', 0),
                 std_hold_time=features.get('std_hold_time', 0),
@@ -412,6 +831,9 @@ def verify_typing():
                 duration_ms=duration_ms,
                 text_typed=typed_text[:500],
             )
+            if table_has_column('typing_sessions', 'feature_blob'):
+                kwargs['feature_blob'] = json.dumps(features)
+            session_record = TypingSession(**kwargs)
             db.session.add(session_record)
             db.session.commit()
 
@@ -419,7 +841,10 @@ def verify_typing():
                 'success': True,
                 'session_id': session_record.id,
                 'is_verified': bool(is_verified),
-                'auth_match_score': float(auth_match_score)
+                'auth_match_score': float(auth_match_score),
+                'requires_retry': bool(requires_retry),
+                'quality': quality,
+                'retry_reason': 'Typing sample needs another verification attempt.' if requires_retry else None
             }), 200
         except Exception as e:
             db.session.rollback()
@@ -470,7 +895,8 @@ def profile():
                          typing_sessions=all_sessions,
                          avg_speed=avg_speed,
                          best_consistency=best_consistency,
-                         regular_count=regular_count)
+                         regular_count=regular_count,
+                         baseline_status=get_baseline_status(user_id))
 
 
 @app.route('/delete-account', methods=['POST'])
@@ -486,6 +912,64 @@ def delete_account():
 
     session.clear()
     return redirect(url_for('login'))
+
+
+@app.route('/reset-baseline', methods=['POST'])
+@login_required
+def reset_baseline():
+    """Delete baseline enrollment sessions for the current user."""
+    user_id = session.get('user_id')
+    for session_obj in get_baseline_sessions(user_id):
+        db.session.delete(session_obj)
+    db.session.commit()
+    return redirect(url_for('setup_typing'))
+
+
+@app.route('/model-health')
+@login_required
+def model_health_page():
+    """Render model/runtime health page."""
+    return render_template('model_health.html')
+
+
+@app.route('/model-comparison')
+@login_required
+def model_comparison_page():
+    """Render model comparison page."""
+    return render_template('model_comparison.html')
+
+
+@app.route('/admin')
+@login_required
+def admin_dashboard_page():
+    """Render project/admin overview page."""
+    return render_template('admin_dashboard.html')
+
+
+@app.route('/download/project-report')
+@login_required
+def download_project_report():
+    """Download an HTML project report."""
+    html = build_project_report_html(session.get('user_id'))
+    filename = f"keystroke_project_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+    return app.response_class(
+        response=html,
+        status=200,
+        mimetype='text/html',
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
+
+
+@app.route('/outputs/plots/<path:filename>')
+@login_required
+def output_plot(filename):
+    """Serve generated model plots to authenticated users."""
+    safe_path = os.path.join(BASE_DIR, 'outputs', 'plots', filename)
+    if not os.path.abspath(safe_path).startswith(os.path.abspath(os.path.join(BASE_DIR, 'outputs', 'plots'))):
+        return jsonify({'error': 'Invalid path'}), 400
+    if not os.path.exists(safe_path):
+        return jsonify({'error': 'Plot not found'}), 404
+    return send_file(safe_path)
 
 
 # ============================================================================
@@ -524,6 +1008,46 @@ def api_models_status():
         'auth_models': auth_models is not None,
         'num_users': len(auth_models) if auth_models else 0
     })
+
+
+@app.route('/api/model-health')
+@login_required
+def api_model_health():
+    """Return model artifact and runtime health."""
+    return jsonify(get_model_health())
+
+
+@app.route('/api/model-comparison')
+@login_required
+def api_model_comparison():
+    """Return model comparison details."""
+    return jsonify(get_model_comparison_payload())
+
+
+@app.route('/api/admin/overview')
+@login_required
+def api_admin_overview():
+    """Return project-level overview statistics."""
+    return jsonify(get_admin_overview_payload())
+
+
+@app.route('/api/baseline/status')
+@login_required
+def api_baseline_status():
+    """Return baseline enrollment status for the current user."""
+    return jsonify(get_baseline_status(session.get('user_id')))
+
+
+@app.route('/api/sample-quality', methods=['POST'])
+@login_required
+def api_sample_quality():
+    """Evaluate sample quality before saving or verification."""
+    data = request.json or {}
+    return jsonify(evaluate_sample_quality(
+        data.get('keystroke_data', []),
+        data.get('typed_text', ''),
+        data.get('sample_text', '')
+    ))
 
 
 # ============================================================================
@@ -573,7 +1097,18 @@ def api_predict_stress():
         
         # Save session to database
         try:
-            session_record = TypingSession(
+            # Build a full feature dict if provided, otherwise map from provided flat fields
+            feature_dict = data.get('features') if isinstance(data.get('features'), dict) else {
+                'mean_hold_time': features[0],
+                'std_hold_time': features[1],
+                'mean_flight_time': features[2],
+                'std_flight_time': features[3],
+                'typing_speed': features[4],
+                'error_proxy': features[5],
+                'consistency_score': features[6],
+                'pause_frequency': features[7]
+            }
+            pkwargs = dict(
                 user_id=user_id,
                 mean_hold_time=features[0],
                 std_hold_time=features[1],
@@ -592,6 +1127,9 @@ def api_predict_stress():
                 duration_ms=data.get('duration_ms', 0),
                 text_typed=data.get('text_typed', ''),
             )
+            if table_has_column('typing_sessions', 'feature_blob'):
+                pkwargs['feature_blob'] = json.dumps(feature_dict)
+            session_record = TypingSession(**pkwargs)
             db.session.add(session_record)
             db.session.commit()
         except Exception as e:
@@ -639,16 +1177,39 @@ def save_baseline():
         data = request.json or {}
         user_id = session.get('user_id')
         typed_text = data.get('typed_text', '')
+        sample_text = data.get('sample_text', '')
         keystroke_data = data.get('keystroke_data', [])
+        sample_accuracy = calculate_text_accuracy(sample_text, typed_text)
+
+        if sample_text and sample_accuracy < BASELINE_MIN_ACCURACY:
+            return jsonify({
+                'error': 'Please type the sample more accurately before saving this baseline.',
+                'sample_accuracy': round(sample_accuracy * 100.0, 1),
+                'baseline_status': get_baseline_status(user_id)
+            }), 400
 
         print('typed_text length:', len(typed_text), 'keystrokes length:', len(keystroke_data))
         features = calculate_keystroke_features(keystroke_data, typed_text)
+        quality = evaluate_sample_quality(keystroke_data, typed_text, sample_text)
+        if sample_text and not quality['is_usable']:
+            return jsonify({
+                'error': quality['issues'][0] if quality['issues'] else 'Sample quality is too low.',
+                'quality': quality,
+                'baseline_status': get_baseline_status(user_id)
+            }), 400
+        features['sample_accuracy'] = sample_accuracy
+        features['sample_text_length'] = len(sample_text)
+        features['is_baseline'] = True
+        features['stress_model_evaluated'] = False
+        features['sample_quality'] = quality
+        features['keystroke_events'] = sanitize_keystroke_events(keystroke_data)
 
         duration_ms = 0
         if len(keystroke_data) >= 2:
             duration_ms = int(max(0, keystroke_data[-1].get('timestamp', 0) - keystroke_data[0].get('timestamp', 0)))
 
-        baseline_session = TypingSession(
+        # Build kwargs and include feature_blob only if supported by DB
+        bkwargs = dict(
             user_id=user_id,
             mean_hold_time=features.get('mean_hold_time', 0),
             std_hold_time=features.get('std_hold_time', 0),
@@ -659,18 +1220,28 @@ def save_baseline():
             consistency_score=features.get('consistency_score', 0),
             pause_frequency=features.get('pause_frequency', 0),
             rf_prediction=0,
-            rf_confidence=0.5,
+            rf_confidence=None,
             xgb_prediction=0,
-            xgb_confidence=0.5,
+            xgb_confidence=None,
             ensemble_prediction=0,
             num_keystrokes=len(keystroke_data),
             duration_ms=duration_ms,
             text_typed='baseline_profile',
         )
+        if table_has_column('typing_sessions', 'feature_blob'):
+            bkwargs['feature_blob'] = json.dumps(features)
+        baseline_session = TypingSession(**bkwargs)
         db.session.add(baseline_session)
         db.session.commit()
+        baseline_status = get_baseline_status(user_id)
 
-        return jsonify({'success': True, 'session_id': baseline_session.id}), 201
+        return jsonify({
+            'success': True,
+            'session_id': baseline_session.id,
+            'baseline_status': baseline_status,
+            'quality': quality,
+            'next_sample_text': get_random_sample_text() if not baseline_status['is_complete'] else None
+        }), 201
     except Exception as e:
         # Log detailed error to server console for debugging
         print('Error in /save-baseline:', str(e))
@@ -699,8 +1270,41 @@ def api_get_session(session_id):
     auth_match_score = calculate_auth_match_score(session_features, previous_sessions)
     payload['auth_match_score'] = float(auth_match_score)
     payload['auth_verified'] = bool(auth_match_score >= 65.0)
+    payload['explanations'] = build_session_explanation(session_obj, previous_sessions)
+    payload['confidence_sections'] = {
+        'identity': {
+            'score': float(auth_match_score),
+            'label': 'Verified' if auth_match_score >= AUTH_RETRY_THRESHOLD else 'Retry recommended'
+        },
+        'stress': {
+            'evaluated': bool(payload.get('stress_model_evaluated')),
+            'label': payload.get('ensemble_label') if payload.get('stress_model_evaluated') else 'Not evaluated for baseline enrollment'
+        }
+    }
 
     return jsonify(payload), 200
+
+
+@app.route('/api/session/<int:session_id>/replay')
+@login_required
+def api_session_replay(session_id):
+    """Return privacy-safe keystroke replay events for a session."""
+    user_id = session.get('user_id')
+    session_obj = TypingSession.query.filter_by(id=session_id, user_id=user_id).first()
+    if not session_obj:
+        return jsonify({'error': 'Session not found'}), 404
+    blob = {}
+    if session_obj.feature_blob:
+        try:
+            blob = json.loads(session_obj.feature_blob)
+        except Exception:
+            blob = {}
+    return jsonify({
+        'session_id': session_obj.id,
+        'events': blob.get('keystroke_events', []),
+        'duration_ms': session_obj.duration_ms or 0,
+        'quality': blob.get('sample_quality')
+    })
 
 
 @app.route('/api/user/sessions')
@@ -775,20 +1379,22 @@ def api_analytics_overview():
             'consistency_score': float(s.consistency_score or 0.0),
             'ensemble_prediction': int(s.ensemble_prediction or 0),
             'mood_label': 'Stressed' if s.ensemble_prediction == 1 else 'Regular',
-            'auth_match_score': float(score_map.get(s.id, {}).get('auth_match_score', 100.0))
+            'auth_match_score': float(score_map.get(s.id, {}).get('auth_match_score', 100.0)),
+            'auth_verified': bool(score_map.get(s.id, {}).get('auth_verified', True)),
+            'is_baseline': s.text_typed == 'baseline_profile'
         }
         for s in current_user_sessions
     ]
 
     peer_summary = []
     users = User.query.order_by(User.username.asc()).all()
-    for u in users:
+    for peer_index, u in enumerate(users, start=1):
         user_sessions = TypingSession.query.filter_by(user_id=u.id).all()
         if not user_sessions:
             continue
 
         peer_summary.append({
-            'username': u.username,
+            'username': 'You' if u.id == user_id else f'User {peer_index}',
             'total_sessions': len(user_sessions),
             'avg_speed': float(np.mean([s.typing_speed for s in user_sessions])),
             'regular_count': len([s for s in user_sessions if s.ensemble_prediction == 0]),
@@ -799,6 +1405,119 @@ def api_analytics_overview():
         'current_user_timeline': timeline,
         'peer_summary': peer_summary
     })
+
+
+@app.route('/api/anomaly-timeline')
+@login_required
+def api_anomaly_timeline():
+    """Return identity confidence over time for anomaly visualization."""
+    user_id = session.get('user_id')
+    sessions_asc = TypingSession.query.filter_by(user_id=user_id).order_by(
+        TypingSession.created_at.asc()
+    ).all()
+    score_map = build_session_auth_scores(sessions_asc)
+    rows = []
+    for s in sessions_asc:
+        score = float(score_map.get(s.id, {}).get('auth_match_score', 100.0))
+        rows.append({
+            'id': s.id,
+            'timestamp': s.created_at.isoformat(),
+            'auth_match_score': score,
+            'risk_level': 'high' if score < 50 else ('watch' if score < AUTH_RETRY_THRESHOLD else 'trusted'),
+            'is_baseline': s.text_typed == 'baseline_profile'
+        })
+    return jsonify({'timeline': rows, 'threshold': AUTH_RETRY_THRESHOLD})
+
+
+@app.route('/api/continuous_status')
+@login_required
+def api_continuous_status():
+    """Get current user's continuous authentication status."""
+    user_id = session.get('user_id')
+    status = ContinuousAuthStatus.query.filter_by(user_id=user_id).first()
+    if not status:
+        return jsonify({'user_id': user_id, 'last_score': None, 'is_authenticated': True}), 200
+    return jsonify(status.to_dict()), 200
+
+
+@app.route('/api/continuous_status/<int:user_id>')
+@login_required
+def api_continuous_status_by_user(user_id):
+    """Get continuous auth status for a specific user id."""
+    status = ContinuousAuthStatus.query.filter_by(user_id=user_id).first()
+    if not status:
+        return jsonify({'error': 'Status not found'}), 404
+    return jsonify(status.to_dict()), 200
+
+
+@app.route('/api/export/feature-blobs', methods=['GET'])
+@login_required
+def api_export_feature_blobs():
+    """Export user's feature_blob data as JSON lines."""
+    user_id = session.get('user_id')
+    sessions = TypingSession.query.filter_by(user_id=user_id).order_by(
+        TypingSession.created_at.asc()
+    ).all()
+    
+    blobs = []
+    for s in sessions:
+        if s.feature_blob:
+            try:
+                blob_data = json.loads(s.feature_blob)
+                blob_data['session_id'] = s.id
+                blob_data['timestamp'] = s.created_at.isoformat()
+                blobs.append(blob_data)
+            except Exception:
+                pass
+    
+    return jsonify({'feature_blobs': blobs, 'count': len(blobs)}), 200
+
+
+@app.route('/api/export/feature-blobs/csv', methods=['GET'])
+@login_required
+def api_export_feature_blobs_csv():
+    """Export user's feature_blob data as CSV file."""
+    import csv
+    from io import StringIO
+    
+    user_id = session.get('user_id')
+    sessions = TypingSession.query.filter_by(user_id=user_id).order_by(
+        TypingSession.created_at.asc()
+    ).all()
+    
+    # Collect all feature keys
+    all_keys = set()
+    rows = []
+    for s in sessions:
+        if s.feature_blob:
+            try:
+                blob_data = json.loads(s.feature_blob)
+                all_keys.update(blob_data.keys())
+                blob_data['session_id'] = s.id
+                blob_data['timestamp'] = s.created_at.isoformat()
+                rows.append(blob_data)
+            except Exception:
+                pass
+    
+    # Build CSV
+    if not rows:
+        return jsonify({'error': 'No feature data to export'}), 400
+    
+    fieldnames = ['session_id', 'timestamp'] + sorted(list(all_keys - {'session_id', 'timestamp'}))
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({k: row.get(k, '') for k in fieldnames})
+    
+    # Return as downloadable file
+    response = app.response_class(
+        response=output.getvalue(),
+        status=200,
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=keystroke_features_{user_id}.csv'}
+    )
+    return response
 
 
 # ============================================================================
@@ -844,21 +1563,68 @@ def calculate_keystroke_features(keystroke_data, text_typed):
     if not keystroke_data or len(keystroke_data) < 2:
         return default_features
 
-    timestamps = [int(k.get('timestamp', 0)) for k in keystroke_data if 'timestamp' in k]
+    normalized_events = []
+    for ev in keystroke_data:
+        timestamp = ev.get('timestamp', ev.get('time'))
+        if timestamp is None:
+            continue
+        try:
+            timestamp = int(timestamp)
+        except Exception:
+            try:
+                timestamp = int(float(timestamp))
+            except Exception:
+                continue
+
+        key = ev.get('key', '')
+        event_type = ev.get('type', ev.get('event', 'keydown'))
+        if event_type not in ('keydown', 'keyup'):
+            event_type = 'keydown'
+
+        normalized_events.append({
+            'timestamp': timestamp,
+            'key': str(key),
+            'type': event_type
+        })
+
+    normalized_events.sort(key=lambda item: item['timestamp'])
+    timestamps = [ev['timestamp'] for ev in normalized_events]
     if len(timestamps) < 2:
         return default_features
 
-    intervals = []
+    keydown_times = []
+    hold_times = []
+    flight_times = []
+    active_keys = {}
+    previous_keyup = None
+    for ev in normalized_events:
+        key = ev['key']
+        timestamp = ev['timestamp']
+        if ev['type'] == 'keydown':
+            keydown_times.append(timestamp)
+            active_keys.setdefault(key, []).append(timestamp)
+            if previous_keyup is not None:
+                flight_times.append(max(0, timestamp - previous_keyup))
+        elif ev['type'] == 'keyup':
+            starts = active_keys.get(key) or []
+            if starts:
+                hold_times.append(max(0, timestamp - starts.pop(0)))
+            previous_keyup = timestamp
+
+    intervals = hold_times if hold_times else []
+    fallback_intervals = []
     pauses = 0
     for i in range(1, len(timestamps)):
         delta = max(0, timestamps[i] - timestamps[i - 1])
         if delta > 0:
-            intervals.append(delta)
+            fallback_intervals.append(delta)
             if delta >= 1000:
                 pauses += 1
 
     if not intervals:
-        intervals = [100.0]
+        intervals = fallback_intervals or [100.0]
+    if not flight_times:
+        flight_times = fallback_intervals or [50.0]
 
     total_duration_sec = max((timestamps[-1] - timestamps[0]) / 1000.0, 0.1)
     typing_speed = min(len(text_typed) / total_duration_sec, 20.0)
@@ -867,9 +1633,9 @@ def calculate_keystroke_features(keystroke_data, text_typed):
     median_hold = float(np.median(intervals))
     std_hold = float(np.std(intervals))
     var_hold = float(np.var(intervals))
-    mean_flight = float(np.mean(intervals) * 0.5)
-    std_flight = float(np.std(intervals) * 0.5)
-    var_flight = float(np.var(intervals) * 0.25)
+    mean_flight = float(np.mean(flight_times))
+    std_flight = float(np.std(flight_times))
+    var_flight = float(np.var(flight_times))
 
     # percentiles
     p10 = float(np.percentile(intervals, 10))
@@ -910,7 +1676,7 @@ def calculate_keystroke_features(keystroke_data, text_typed):
     max_corr_streak = 0
     cur_streak = 0
     typed_chars = []
-    for ev in keystroke_data:
+    for ev in normalized_events:
         k = ev.get('key', '') if isinstance(ev.get('key', ''), str) else ''
         if k == 'Backspace':
             backspace_count += 1
@@ -927,17 +1693,17 @@ def calculate_keystroke_features(keystroke_data, text_typed):
     if cur_streak > max_corr_streak:
         max_corr_streak = cur_streak
 
-    backspace_ratio = float(backspace_count / max(1, len(keystroke_data)))
+    backspace_ratio = float(backspace_count / max(1, len(normalized_events)))
 
     # digraph timing for common digraphs
     common = ['th', 'er', 'in', 'an']
     digraph_means = {d: [] for d in common}
     # build timestamps map for characters sequence
     char_times = []
-    for ev in keystroke_data:
+    for ev in normalized_events:
         k = ev.get('key', '')
         ts = ev.get('timestamp', None)
-        if isinstance(k, str) and len(k) == 1 and ts is not None:
+        if ev.get('type') == 'keydown' and isinstance(k, str) and len(k) == 1 and ts is not None:
             char_times.append((k, int(ts)))
     for i in range(1, len(char_times)):
         prev_c, prev_t = char_times[i - 1]
@@ -1159,11 +1925,11 @@ def init_db():
         # Lightweight migration: ensure new columns exist on existing tables
         try:
             # Check if 'feature_blob' column exists in typing_sessions
-            res = db.session.execute("PRAGMA table_info('typing_sessions')").fetchall()
+            res = db.session.execute(text("PRAGMA table_info('typing_sessions')")).fetchall()
             cols = [r[1] for r in res]
             if 'feature_blob' not in cols:
                 try:
-                    db.session.execute("ALTER TABLE typing_sessions ADD COLUMN feature_blob TEXT")
+                    db.session.execute(text("ALTER TABLE typing_sessions ADD COLUMN feature_blob TEXT"))
                     db.session.commit()
                     print("Added missing column: typing_sessions.feature_blob")
                 except Exception as e:
@@ -1176,8 +1942,83 @@ def init_db():
         print("Database initialized")
 
 
-if __name__ == '__main__':
+def table_has_column(table_name, column_name):
+    try:
+        inspector = inspect(db.engine)
+        cols = [c['name'] for c in inspector.get_columns(table_name)]
+        return column_name in cols
+    except Exception:
+        return False
+
+
+def compute_continuous_score_for_user(user_id: int, window: int = 5) -> float:
+    """Compute a rolling auth match score for a user using their recent sessions."""
+    with app.app_context():
+        sessions = TypingSession.query.filter_by(user_id=user_id).order_by(TypingSession.created_at.desc()).limit(window + 1).all()
+        if not sessions:
+            return 100.0
+        # latest is current; previous are the rest
+        current = sessions[0]
+        previous = sessions[1:]
+        current_features = session_to_feature_dict(current)
+        score = calculate_auth_match_score(current_features, previous)
+        return float(score)
+
+
+def update_continuous_status_for_user(user_id: int, score: float, threshold: float) -> None:
+    with app.app_context():
+        status = ContinuousAuthStatus.query.filter_by(user_id=user_id).first()
+        is_auth = score >= threshold
+        if not status:
+            status = ContinuousAuthStatus(user_id=user_id, last_score=score, is_authenticated=is_auth)
+            db.session.add(status)
+        else:
+            status.last_score = score
+            status.is_authenticated = is_auth
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+
+def continuous_auth_checker(interval: int = 60, threshold: float = 65.0):
+    """Background loop that periodically recomputes continuous auth for all users."""
+    while True:
+        try:
+            with app.app_context():
+                users = User.query.all()
+                for u in users:
+                    try:
+                        score = compute_continuous_score_for_user(u.id)
+                        update_continuous_status_for_user(u.id, score, threshold)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        time.sleep(interval)
+
+
+def start_continuous_auth_checker():
+    """Start the background thread for continuous auth if not already running."""
+    interval = int(os.environ.get('KEYSTROKE_CONTINUOUS_INTERVAL', '60'))
+    threshold = float(os.environ.get('KEYSTROKE_CONTINUOUS_THRESHOLD', '65.0'))
+    t = threading.Thread(target=continuous_auth_checker, args=(interval, threshold), daemon=True)
+    t.start()
+
+
+def init_app():
+    """Initialize Flask app, database, and background services."""
     init_db()
+    start_continuous_auth_checker()
+    print("Continuous authentication checker started")
+
+
+if __name__ == '__main__':
+    try:
+        init_app()
+    except Exception as exc:
+        print(f'Application initialization failed: {exc}')
+        raise
     # Allow configuring host/port via environment for flexibility
     host = os.environ.get('KEYSTROKE_HOST', '0.0.0.0')
     port = int(os.environ.get('KEYSTROKE_PORT', '5000'))

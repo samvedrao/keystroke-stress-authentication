@@ -173,11 +173,13 @@
                         <th>Date and Time</th>
                         <th>Typing Speed</th>
                         <th>Consistency</th>
+                        <th>Auth Match</th>
                         <th>Mood</th>
+                        <th>Details</th>
                     </tr>
                 </thead>
                 <tbody id="historyRows">
-                    <tr><td colspan="4" class="empty">Loading sessions...</td></tr>
+                    <tr><td colspan="6" class="empty">Loading sessions...</td></tr>
                 </tbody>
             </table>
         </section>
@@ -191,20 +193,24 @@
             const body = document.getElementById('historyRows');
 
             if (!timeline.length) {
-                body.innerHTML = '<tr><td colspan="4" class="empty">No sessions yet.</td></tr>';
+                body.innerHTML = '<tr><td colspan="6" class="empty">No sessions yet.</td></tr>';
                 return;
             }
 
             body.innerHTML = timeline.map(item => {
                 const badgeClass = item.mood_label === 'Stressed' ? 'stressed' : 'regular';
                 const consistencyPercent = (Number(item.consistency_score || 0) * 100).toFixed(1);
+                const authClass = item.auth_verified ? 'regular' : 'stressed';
+                const authScore = Number(item.auth_match_score || 0).toFixed(1);
 
                 return `
                     <tr>
                         <td>${new Date(item.timestamp).toLocaleString()}</td>
                         <td>${Number(item.typing_speed || 0).toFixed(2)}</td>
                         <td>${consistencyPercent}%</td>
+                        <td><span class="badge ${authClass}">${authScore}%</span></td>
                         <td><span class="badge ${badgeClass}">${item.mood_label}</span></td>
+                        <td><a href="/analysis-results?session_id=${item.id}">Open</a></td>
                     </tr>
                 `;
             }).join('');
@@ -296,7 +302,7 @@
                 renderMoodChart(timeline);
                 renderStressChart(peers);
             } catch (error) {
-                document.getElementById('historyRows').innerHTML = '<tr><td colspan="4" class="empty">Unable to load data.</td></tr>';
+                document.getElementById('historyRows').innerHTML = '<tr><td colspan="6" class="empty">Unable to load data.</td></tr>';
                 console.error(error);
             }
         }

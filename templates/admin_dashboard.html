@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Overview - Keystroke Dynamics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; color: #2c3e50; min-height: 100vh; }
+        .navbar { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .navbar a { color: white; text-decoration: none; font-weight: 600; }
+        .navbar-links { display: flex; gap: 1.5rem; }
+        .container { max-width: 1100px; margin: 2rem auto; padding: 0 2rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .card { background: white; border-radius: 10px; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+        .metric { border-left: 4px solid #667eea; }
+        .metric .label { color: #7f8c8d; text-transform: uppercase; font-size: 0.85rem; font-weight: 700; }
+        .metric .value { font-size: 2rem; font-weight: 800; margin-top: 0.4rem; }
+        .btn { display: inline-block; padding: 0.8rem 1.1rem; border-radius: 6px; text-decoration: none; font-weight: 700; border: 2px solid #667eea; color: #667eea; margin-right: 0.75rem; margin-top: 0.75rem; }
+        @media (max-width: 700px) { .navbar { flex-direction: column; gap: 1rem; } .container { padding: 0 1rem; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1><a href="/dashboard">Keystroke Dynamics</a></h1>
+        <div class="navbar-links">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/model-comparison">Models</a>
+            <a href="/model-health">Health</a>
+        </div>
+    </nav>
+    <main class="container">
+        <section class="card">
+            <h2>Project Admin Overview</h2>
+            <p style="color:#7f8c8d;">Operational summary for project evaluation and demo review.</p>
+            <a class="btn" href="/download/project-report">Download Report</a>
+            <a class="btn" href="/api/export/feature-blobs/csv">Export Current User CSV</a>
+        </section>
+        <section class="grid" id="metricsGrid"></section>
+        <section class="card">
+            <h2>Anomaly Timeline</h2>
+            <canvas id="anomalyChart"></canvas>
+        </section>
+    </main>
+    <script>
+        async function loadAdmin() {
+            const [overviewResponse, timelineResponse] = await Promise.all([
+                fetch('/api/admin/overview'),
+                fetch('/api/anomaly-timeline')
+            ]);
+            const overview = await overviewResponse.json();
+            const timeline = await timelineResponse.json();
+            const metrics = [
+                ['Users', overview.total_users],
+                ['Sessions', overview.total_sessions],
+                ['Baseline', overview.baseline_sessions],
+                ['Verification', overview.verification_sessions],
+                ['Stress events', overview.stress_sessions],
+                ['Avg auth match', `${overview.avg_auth_match}%`]
+            ];
+            document.getElementById('metricsGrid').innerHTML = metrics.map(([label, value]) => `
+                <article class="card metric"><div class="label">${label}</div><div class="value">${value}</div></article>
+            `).join('');
+            const rows = timeline.timeline || [];
+            new Chart(document.getElementById('anomalyChart'), {
+                type: 'line',
+                data: {
+                    labels: rows.map(row => new Date(row.timestamp).toLocaleString()),
+                    datasets: [{
+                        label: 'Identity Confidence',
+                        data: rows.map(row => row.auth_match_score),
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102,126,234,0.15)',
+                        tension: 0.25
+                    }, {
+                        label: 'Retry Threshold',
+                        data: rows.map(() => timeline.threshold),
+                        borderColor: '#c0392b',
+                        borderDash: [6, 6],
+                        pointRadius: 0
+                    }]
+                },
+                options: { responsive: true, scales: { y: { min: 0, max: 100 } } }
+            });
+        }
+        loadAdmin();
+    </script>
+</body>
+</html>

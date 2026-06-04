@@ -151,6 +151,27 @@
             font-weight: 700;
         }
 
+        .baseline-status {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .baseline-pill {
+            background: #f0f4f8;
+            border-radius: 8px;
+            padding: 1rem;
+            border-left: 4px solid #667eea;
+        }
+
+        .baseline-pill strong {
+            display: block;
+            color: #2c3e50;
+            font-size: 1.25rem;
+            margin-top: 0.25rem;
+        }
+
         .button-group {
             display: flex;
             gap: 1rem;
@@ -281,6 +302,21 @@
                 <strong>Important:</strong> This creates your baseline profile. Type at your normal speed without rushing or worrying about mistakes. Your unique keystroke pattern will be stored securely.
             </div>
 
+            <div class="baseline-status">
+                <div class="baseline-pill">
+                    Baseline rounds
+                    <strong><span id="baselineCount">{{ baseline_status.completed_samples }}</span> / <span id="baselineTarget">{{ baseline_status.target_samples }}</span></strong>
+                </div>
+                <div class="baseline-pill">
+                    Quality
+                    <strong><span id="baselineQuality">{{ baseline_status.quality_score }}</span>%</strong>
+                </div>
+                <div class="baseline-pill">
+                    Status
+                    <strong id="baselineLabel">{{ baseline_status.quality_label }}</strong>
+                </div>
+            </div>
+
             <!-- Sample Text to Type -->
             <div>
                 <label style="font-weight: 600; color: #2c3e50; margin-bottom: 0.5rem; display: block;">Sample Text (Please type this exactly):</label>
@@ -345,7 +381,7 @@
     </div>
 
     <script>
-        const sampleText = document.getElementById('sampleText').textContent.trim();
+        let sampleText = document.getElementById('sampleText').textContent.trim();
         const typingInput = document.getElementById('typingInput');
         const submitBtn = document.getElementById('submitBtn');
         let startTime = null;
@@ -360,11 +396,31 @@
             updateProgress();
         });
 
-        // Keystroke capture (more detailed)
-        typingInput.addEventListener('keydown', (e) => {
+        typingInput.addEventListener('paste', (e) => {
+            e.preventDefault();
             keystrokeData.push({
                 timestamp: Date.now(),
-                key: e.key.length === 1 ? e.key : 'special'
+                key: 'Paste',
+                type: 'paste'
+            });
+            showMessage('Pasting is disabled during baseline enrollment. Please type the sample manually.', 'error');
+        });
+
+        // Keystroke capture with paired down/up timing.
+        typingInput.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            keystrokeData.push({
+                timestamp: Date.now(),
+                key: e.key,
+                type: 'keydown'
+            });
+        });
+
+        typingInput.addEventListener('keyup', (e) => {
+            keystrokeData.push({
+                timestamp: Date.now(),
+                key: e.key,
+                type: 'keyup'
             });
         });
 
@@ -428,12 +484,25 @@
                         keystroke_data: keystrokeData
                     })
                 });
+                const data = await response.json();
 
                 if (response.ok) {
-                    showMessage('Baseline saved successfully. Redirecting to dashboard...', 'success');
-                    setTimeout(() => window.location.href = '/dashboard', 1500);
+                    updateBaselineStatus(data.baseline_status);
+                    if (data.baseline_status && data.baseline_status.is_complete) {
+                        showMessage('Baseline complete. Redirecting to dashboard...', 'success');
+                        setTimeout(() => window.location.href = '/dashboard', 1200);
+                    } else {
+                        showMessage('Round saved. Type the next sample to strengthen your baseline.', 'success');
+                        if (data.next_sample_text) {
+                            sampleText = data.next_sample_text;
+                            document.getElementById('sampleText').textContent = sampleText;
+                            document.getElementById('totalChars').textContent = sampleText.length;
+                        }
+                        resetTyping(false);
+                    }
                 } else {
-                    showMessage('Error saving baseline. Please try again.', 'error');
+                    const qualityDetails = data.quality && data.quality.issues ? ' ' + data.quality.issues.join(' ') : '';
+                    showMessage((data.error || 'Error saving baseline. Please try again.') + qualityDetails, 'error');
                     submitBtn.disabled = false;
                 }
             } catch (error) {
@@ -446,6 +515,14 @@
             const msg = document.getElementById('message');
             msg.textContent = text;
             msg.className = `message show ${type}`;
+        }
+
+        function updateBaselineStatus(status) {
+            if (!status) return;
+            document.getElementById('baselineCount').textContent = status.completed_samples;
+            document.getElementById('baselineTarget').textContent = status.target_samples;
+            document.getElementById('baselineQuality').textContent = status.quality_score;
+            document.getElementById('baselineLabel').textContent = status.quality_label;
         }
     </script>
 </body>

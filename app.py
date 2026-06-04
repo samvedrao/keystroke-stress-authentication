@@ -10,11 +10,9 @@ from flask import Flask, render_template, jsonify, request, send_file
 from datetime import datetime
 import numpy as np
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-
-from metrics_tracker import MetricsTracker
-from load_data import load_cmu
-from features import extract_cmu_features
+from src.metrics_tracker import MetricsTracker
+from src.load_data import load_cmu
+from src.features import extract_cmu_features
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['JSON_SORT_KEYS'] = False

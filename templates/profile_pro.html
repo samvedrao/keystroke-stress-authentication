@@ -215,8 +215,36 @@
 
             <div class="actions" style="margin-top: 1.5rem;">
                 <a href="/verify-typing" class="btn btn-primary">Analyze Typing</a>
+                <a href="/setup-typing" class="btn btn-secondary">Add Baseline Samples</a>
+                <a href="/api/export/feature-blobs/csv" class="btn btn-secondary">Export CSV</a>
+                <a href="/model-health" class="btn btn-secondary">Model Health</a>
+                <a href="/model-comparison" class="btn btn-secondary">Compare Models</a>
+                <a href="/admin" class="btn btn-secondary">Admin Overview</a>
+                <a href="/download/project-report" class="btn btn-secondary">Project Report</a>
                 <a href="/dashboard" class="btn btn-secondary">Back to Dashboard</a>
             </div>
+        </section>
+
+        <section class="card">
+            <h3>Baseline Profile</h3>
+            <p class="muted" style="margin: 0.5rem 0 1rem;">Your baseline helps the app decide whether a typing sample looks like you.</p>
+            <div class="stats-grid">
+                <div class="stat">
+                    <div class="label">Samples</div>
+                    <div class="value">{{ baseline_status.completed_samples }} / {{ baseline_status.target_samples }}</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Quality</div>
+                    <div class="value">{{ "%.1f"|format(baseline_status.quality_score) }}%</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Status</div>
+                    <div class="value">{{ baseline_status.quality_label }}</div>
+                </div>
+            </div>
+            <form method="POST" action="/reset-baseline" onsubmit="return confirm('Reset your baseline samples?');" style="margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-secondary">Reset Baseline</button>
+            </form>
         </section>
 
         <section class="card danger">
