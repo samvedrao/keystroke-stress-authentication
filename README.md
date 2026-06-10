@@ -625,7 +625,6 @@ http://localhost:5000
 - `GET /api/users` - List available users for authentication
 
 ### Downloads
-- `GET /download/report` - Download latest training report
 - `GET /download/metrics` - Download metrics JSON
 
 ---
@@ -670,8 +669,7 @@ After running `python main.py`:
 - `stress_feature_importance.png` - XGBoost feature importance ranking
 - `auth_accuracy.png` - Per-user authentication accuracy
 
-### Reports & Data
-- `stress_auth_report.txt` - Text summary of results
+### Data
 - `training_metrics.json` - JSON with full accuracy history
 
 ---
@@ -763,4 +761,3 @@ For issues or questions, check:
 1. Training console output for errors
 2. Browser console (F12) for frontend errors
 3. `training_metrics.json` for accuracy history
-4. `stress_auth_report.txt` for summary results

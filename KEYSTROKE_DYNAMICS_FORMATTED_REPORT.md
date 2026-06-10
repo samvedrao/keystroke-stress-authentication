@@ -837,7 +837,7 @@ Warnings were observed for default production secret key, SQLAlchemy legacy usag
 
 ## 9.1 Model Results
 
-The generated report in `outputs/stress_auth_report.txt` contains the following results:
+The project evaluation produced the following model results:
 
 | Model / Task | Metric | Value |
 |---|---:|---:|
@@ -923,4 +923,3 @@ Future enhancements include:
 10. Killourhy, K. S., and Maxion, R. A. "Comparing anomaly-detection algorithms for keystroke dynamics." IEEE/IFIP International Conference on Dependable Systems and Networks, 2009.
 11. Monrose, F., and Rubin, A. D. "Authentication via keystroke dynamics." ACM Conference on Computer and Communications Security, 1997.
 12. Project source files: `app_auth.py`, `main.py`, `src/features.py`, `src/model_stress.py`, `src/model_auth.py`, `src/stress_labels.py`, `keystroke_project/src/continuous_auth.py`.
-

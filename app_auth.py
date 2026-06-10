@@ -551,44 +551,6 @@ def get_admin_overview_payload():
     }
 
 
-def build_project_report_html(user_id=None):
-    """Generate a lightweight HTML report for project submission/export."""
-    admin = get_admin_overview_payload()
-    model_comparison = get_model_comparison_payload()
-    generated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Keystroke Dynamics Project Report</title>
-<style>body{{font-family:Segoe UI,Arial,sans-serif;margin:32px;color:#2c3e50;line-height:1.5}}h1,h2{{color:#26384d}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}}.card{{border:1px solid #dfe6ee;border-radius:8px;padding:14px;background:#f8fafc}}table{{width:100%;border-collapse:collapse}}td,th{{padding:8px;border-bottom:1px solid #e6edf5;text-align:left}}</style></head>
-<body>
-<h1>Keystroke Dynamics Authentication and Stress Analysis</h1>
-<p>Generated at {generated_at}</p>
-<h2>System Overview</h2>
-<div class="grid">
-<div class="card"><strong>Total users</strong><br>{admin['total_users']}</div>
-<div class="card"><strong>Total sessions</strong><br>{admin['total_sessions']}</div>
-<div class="card"><strong>Baseline sessions</strong><br>{admin['baseline_sessions']}</div>
-<div class="card"><strong>Verification sessions</strong><br>{admin['verification_sessions']}</div>
-<div class="card"><strong>Average auth match</strong><br>{admin['avg_auth_match']}%</div>
-</div>
-<h2>Implemented Features</h2>
-<ul>
-<li>Multi-sample baseline enrollment with quality scoring.</li>
-<li>Real keydown/keyup timing for hold and flight features.</li>
-<li>Stress prediction with Random Forest, XGBoost, and ensemble output.</li>
-<li>Continuous authentication scoring and anomaly timeline.</li>
-<li>Session replay visualization and explainable result summaries.</li>
-<li>Data export, model health, model comparison, and admin dashboard.</li>
-</ul>
-<h2>Model Comparison</h2>
-<table><thead><tr><th>Model</th><th>Accuracy</th><th>Strength</th><th>Limitation</th></tr></thead><tbody>
-{''.join(f"<tr><td>{m['name']}</td><td>{m.get('accuracy') if m.get('accuracy') is not None else 'N/A'}</td><td>{m['strength']}</td><td>{m['limitation']}</td></tr>" for m in model_comparison['models'])}
-</tbody></table>
-<h2>Confidence Note</h2>
-<p>Baseline enrollment sessions are not stress-scored and should not display model confidence. Runtime stress confidence uses raw model probabilities unless calibrated models are trained and promoted.</p>
-</body></html>"""
-
-
 # ============================================================================
 # AUTHENTICATION DECORATORS
 # ============================================================================
@@ -944,20 +906,6 @@ def model_comparison_page():
 def admin_dashboard_page():
     """Render project/admin overview page."""
     return render_template('admin_dashboard.html')
-
-
-@app.route('/download/project-report')
-@login_required
-def download_project_report():
-    """Download an HTML project report."""
-    html = build_project_report_html(session.get('user_id'))
-    filename = f"keystroke_project_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-    return app.response_class(
-        response=html,
-        status=200,
-        mimetype='text/html',
-        headers={'Content-Disposition': f'attachment; filename={filename}'}
-    )
 
 
 @app.route('/outputs/plots/<path:filename>')

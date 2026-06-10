@@ -14,8 +14,6 @@ def combined_report(stress_results, auth_results):
     - Stress Classification: RF accuracy, XGBoost accuracy, winner
     - User Authentication: average accuracy, precision, recall
     - Overall project conclusion
-    
-    Saves report to outputs/stress_auth_report.txt
     """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -72,13 +70,6 @@ def combined_report(stress_results, auth_results):
     # Print report
     report_text = "\n".join(report)
     print("\n" + report_text)
-    
-    # Save report
-    output_path = os.path.join(OUTPUT_DIR, 'stress_auth_report.txt')
-    with open(output_path, 'w') as f:
-        f.write(report_text)
-    
-    print(f"\nReport saved to {output_path}")
     
     # Track metrics
     tracker = MetricsTracker(os.path.join(OUTPUT_DIR, 'training_metrics.json'))

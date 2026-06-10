@@ -6,7 +6,7 @@ import os
 import sys
 import json
 import joblib
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import Flask, render_template, jsonify, request
 from datetime import datetime
 import numpy as np
 
@@ -201,16 +201,6 @@ def metrics_page():
     """Metrics history page."""
     all_metrics = tracker.get_all_metrics()
     return render_template('metrics.html', all_metrics=all_metrics)
-
-
-@app.route('/download/report')
-def download_report():
-    """Download the latest report."""
-    try:
-        return send_file(os.path.join('outputs', 'stress_auth_report.txt'),
-                        as_attachment=True)
-    except:
-        return jsonify({'error': 'Report not found'}), 404
 
 
 @app.route('/download/metrics')

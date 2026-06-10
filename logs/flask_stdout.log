@@ -1,5 +1,0 @@
-SQLALCHEMY DB URL: sqlite:///C:\Documents\KeyboardPersonality\instance\keystroke_db.db
-Database initialized
-Continuous authentication checker started
- * Serving Flask app 'app_auth'
- * Debug mode: off
