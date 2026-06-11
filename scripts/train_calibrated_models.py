@@ -12,7 +12,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src
 import joblib
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
 from load_data import load_cmu
@@ -37,9 +36,6 @@ def main():
 
     X = labeled_df[feature_cols]
     y = labeled_df['stress_label']
-    X_train, X_cal, y_train, y_cal = train_test_split(
-        X, y, test_size=0.25, stratify=y, random_state=42
-    )
 
     rf = RandomForestClassifier(
         n_estimators=200,
@@ -50,9 +46,8 @@ def main():
         n_jobs=-1,
         class_weight='balanced'
     )
-    rf.fit(X_train, y_train)
-    rf_calibrated = CalibratedClassifierCV(rf, method='sigmoid', cv='prefit')
-    rf_calibrated.fit(X_cal, y_cal)
+    rf_calibrated = CalibratedClassifierCV(rf, method='sigmoid', cv=2)
+    rf_calibrated.fit(X, y)
 
     xgb = XGBClassifier(
         n_estimators=200,
@@ -66,9 +61,8 @@ def main():
         tree_method='hist',
         scale_pos_weight=1
     )
-    xgb.fit(X_train, y_train)
-    xgb_calibrated = CalibratedClassifierCV(xgb, method='sigmoid', cv='prefit')
-    xgb_calibrated.fit(X_cal, y_cal)
+    xgb_calibrated = CalibratedClassifierCV(xgb, method='sigmoid', cv=2)
+    xgb_calibrated.fit(X, y)
 
     joblib.dump(rf_calibrated, os.path.join(MODELS_DIR, 'stress_random_forest_calibrated.pkl'))
     joblib.dump(xgb_calibrated, os.path.join(MODELS_DIR, 'stress_xgboost_calibrated.pkl'))
